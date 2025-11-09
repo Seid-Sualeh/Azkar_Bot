@@ -1,6 +1,13 @@
 // =========================
 // 📦 IMPORTS
 // =========================
+const express = require("express");
+const app = express();
+
+// Simple web server to keep Render happy
+const PORT = process.env.PORT || 3000;
+
+
  require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const moment = require("moment-timezone");
@@ -273,6 +280,8 @@ schedule.scheduleJob("* * * * *", () => {
 });
 
 console.log("✅ Azkar Bot is running...");
+app.get("/", (req, res) => res.send("Bot is running!"));
+app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
 
 // // =========================
 // // 📦 IMPORTS
