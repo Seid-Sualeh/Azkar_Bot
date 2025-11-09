@@ -196,8 +196,8 @@ bot.onText(/\/test/, (msg) => {
                 ? "🎧 Play Morning Azkar Audio"
                 : "🎧 Play Evening Azkar Audio",
               url: isMorning
-                ? "https://raw.githubusercontent.com/Seid-Sualeh/Azkar_Bot/main/audio/morning%20azkar.mp3"
-                : "https://raw.githubusercontent.com/Seid-Sualeh/Azkar_Bot/main/audio/evening%20azkar.mp3",
+                ? "https://www.tvquran.com/en/selection/3/adhkar-of-the-morning"
+                : "https://www.tvquran.com/en/selection/4/embeddable",
             },
           ],
         ],
