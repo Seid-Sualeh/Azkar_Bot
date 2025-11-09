@@ -233,7 +233,7 @@ schedule.scheduleJob("* * * * *", async () => {
             [
               {
                 text: "🎧 Play Morning Azkar Audio",
-                url: "https://raw.githubusercontent.com/Seid-Sualeh/Azkar_Bot/main/audio/morning%20azkar.mp3",
+                url: "https://www.tvquran.com/en/selection/3/adhkar-of-the-morning",
               },
             ],
           ],
@@ -257,7 +257,7 @@ schedule.scheduleJob("* * * * *", async () => {
             [
               {
                 text: "🎧 Play Evening Azkar Audio",
-                url: "https://raw.githubusercontent.com/Seid-Sualeh/Azkar_Bot/main/audio/evening%20azkar.mp3",
+                url: "https://www.tvquran.com/en/selection/4/embeddable",
               },
             ],
           ],
