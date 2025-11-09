@@ -199,8 +199,6 @@
 
 
 
-
-
 // =========================
 // 🌿 GLOBAL AZKAR BOT FOR THE UMMAH
 // =========================
@@ -269,7 +267,6 @@ bot.onText(/\/start/, async (msg) => {
   const name = msg.from.first_name || "Akhi/Akhti";
   const timezone = await getUserTimezone();
 
-  // If user not yet subscribed
   if (!users.find((u) => u.id === chatId)) {
     users.push({ id: chatId, timezone, language: "Arabic" });
   }
@@ -301,7 +298,6 @@ bot.on("callback_query", async (callbackQuery) => {
   const data = callbackQuery.data;
   const user = users.find((u) => u.id === chatId);
 
-  // Handle language choice
   if (data.startsWith("lang_")) {
     if (!user) return;
 
@@ -319,7 +315,6 @@ bot.on("callback_query", async (callbackQuery) => {
     return;
   }
 
-  // Handle subscription
   if (data === "subscribe_user") {
     if (!user) {
       const timezone = await getUserTimezone();
@@ -374,14 +369,28 @@ bot.onText(/\/test/, (msg) => {
   const user = users.find((u) => u.id === chatId);
   const lang = user ? user.language : "Arabic";
 
-  const message =
-    now.hour() >= 5 && now.hour() < 12
-      ? formatAzkarMessage(morningAzkar, "☀️ Morning Azkar", lang)
-      : formatAzkarMessage(eveningAzkar, "🌙 Evening Azkar", lang);
+  const isMorning = now.hour() >= 5 && now.hour() < 12;
+  const message = isMorning
+    ? formatAzkarMessage(morningAzkar, "☀️ Morning Azkar", lang)
+    : formatAzkarMessage(eveningAzkar, "🌙 Evening Azkar", lang);
 
   const chunks = message.match(/[\s\S]{1,4000}/g) || [];
   chunks.forEach((chunk) => {
-    bot.sendMessage(chatId, chunk, { parse_mode: "Markdown" });
+    bot.sendMessage(chatId, chunk, {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: isMorning ? "🎧 Play Morning Azkar Audio" : "🎧 Play Evening Azkar Audio",
+              url: isMorning
+                ? "https://raw.githubusercontent.com/Seid-Sualeh/Azkar_Bot/main/audio/morning%20azkar.mp3"
+                : "https://raw.githubusercontent.com/Seid-Sualeh/Azkar_Bot/main/audio/evening%20azkar.mp3",
+            },
+          ],
+        ],
+      },
+    });
   });
 });
 
@@ -402,7 +411,19 @@ schedule.scheduleJob("* * * * *", async () => {
 
     if (hour === 7 && minute === 0) {
       const msg = formatAzkarMessage(morningAzkar, "☀️ Morning Azkar", lang);
-      bot.sendMessage(user.id, msg, { parse_mode: "Markdown" });
+      bot.sendMessage(user.id, msg, {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🎧 Play Morning Azkar Audio",
+                url: "https://raw.githubusercontent.com/Seid-Sualeh/Azkar_Bot/main/audio/morning%20azkar.mp3",
+              },
+            ],
+          ],
+        },
+      });
     }
 
     if (hour === 16 && minute === 55) {
@@ -411,7 +432,19 @@ schedule.scheduleJob("* * * * *", async () => {
 
     if (hour === 17 && minute === 0) {
       const msg = formatAzkarMessage(eveningAzkar, "🌙 Evening Azkar", lang);
-      bot.sendMessage(user.id, msg, { parse_mode: "Markdown" });
+      bot.sendMessage(user.id, msg, {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "🎧 Play Evening Azkar Audio",
+                url: "https://raw.githubusercontent.com/Seid-Sualeh/Azkar_Bot/main/audio/evening%20azkar.mp3",
+              },
+            ],
+          ],
+        },
+      });
     }
   }
 });
