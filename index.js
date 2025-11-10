@@ -1,4 +1,3 @@
-
 // =========================
 // 🌿 GLOBAL AZKAR BOT FOR THE UMMAH
 // =========================
@@ -46,15 +45,35 @@ async function getUserTimezone() {
 }
 
 // 🕋 Format Azkar text based on user language
+// 🕋 Format Azkar text based on user language
 function formatAzkarMessage(azkarList, title, lang) {
   let msg = `🌿 *${title}* 🌿\n\n`;
+
   azkarList.forEach((azkar, i) => {
     msg += `✨ *${i + 1}.*\n`;
-    if (lang === "Arabic") msg += `🕋 _${azkar.arabic}_\n`;
-    else if (lang === "English") msg += `🇬🇧 *Meaning:* _${azkar.english}_\n`;
-    else if (lang === "Amharic") msg += `🇪🇹 *ትርጉም:* _${azkar.amharic}_\n`;
-    msg += `🔁 *Repeat:* \`${azkar.repetitions}x\`\n📖 *Source:* _${azkar.source}_\n\n`;
+
+    // Arabic section
+    if (lang === "Arabic") {
+      msg += `🕋 _${azkar.arabic}_\n`;
+      msg += `🔁 *عدد التكرار:* \`${azkar.repetitions}x\`\n`;
+      msg += `📖 *المصدر:* _${azkar.source}_\n\n`;
+    }
+
+    // English section
+    else if (lang === "English") {
+      msg += `🇬🇧 *Meaning:* _${azkar.english}_\n`;
+      msg += `🔁 *Repeat:* \`${azkar.repetitions}x\`\n`;
+      msg += `📖 *Source:* _${azkar.source}_\n\n`;
+    }
+
+    // Amharic section
+    else if (lang === "Amharic") {
+      msg += `🇪🇹 *ትርጉም:* _${azkar.amharic}_\n`;
+      msg += `🔁 *ይድገሙ:* \`${azkar.repetitions} ጊዜ\`\n`;
+      msg += `📖 *ምንጭ:* _${azkar.source}_\n\n`;
+    }
   });
+
   return msg;
 }
 
@@ -93,7 +112,9 @@ Would you like to subscribe to daily Azkar reminders?
   bot.sendMessage(chatId, welcome, {
     parse_mode: "Markdown",
     reply_markup: {
-      inline_keyboard: [[{ text: "📿 Subscribe", callback_data: "subscribe_user" }]],
+      inline_keyboard: [
+        [{ text: "📿 Subscribe", callback_data: "subscribe_user" }],
+      ],
     },
   });
 });
@@ -118,7 +139,9 @@ bot.on("callback_query", async (callbackQuery) => {
       Amharic: "✅ ቋንቋዎን ወደ አማርኛ ቀይረዋል። አዝካር በአማርኛ ቋንቋ ይደርሳችሁ።",
     };
 
-    return bot.sendMessage(chatId, msgByLang[user.language], { parse_mode: "Markdown" });
+    return bot.sendMessage(chatId, msgByLang[user.language], {
+      parse_mode: "Markdown",
+    });
   }
 
   if (data === "subscribe_user") {
@@ -182,11 +205,18 @@ bot.onText(/\/test/, async (msg) => {
     ? formatAzkarMessage(morningAzkar, "☀️ Morning Azkar", lang)
     : formatAzkarMessage(eveningAzkar, "🌙 Evening Azkar", lang);
 
-  const audioLink = isMorning ? MORNING_AZKAR_AUDIO_URL : EVENING_AZKAR_AUDIO_URL;
-  const captionText = isMorning ? "*Morning Azkar Audio*" : "*Evening Azkar Audio*";
+  const audioLink = isMorning
+    ? MORNING_AZKAR_AUDIO_URL
+    : EVENING_AZKAR_AUDIO_URL;
+  const captionText = isMorning
+    ? "*Morning Azkar Audio*"
+    : "*Evening Azkar Audio*";
 
   await sendLongMessage(chatId, message, { parse_mode: "Markdown" });
-  await bot.sendAudio(chatId, audioLink, { caption: captionText, parse_mode: "Markdown" });
+  await bot.sendAudio(chatId, audioLink, {
+    caption: captionText,
+    parse_mode: "Markdown",
+  });
 });
 
 // =========================
@@ -203,7 +233,10 @@ schedule.scheduleJob("* * * * *", async () => {
 
       // Morning reminder at 6:55
       if (hour === 6 && minute === 55) {
-        await bot.sendMessage(user.id, "⏰ Morning Azkar will start in 5 minutes, in shaa Allah ☀️");
+        await bot.sendMessage(
+          user.id,
+          "⏰ Morning Azkar will start in 5 minutes, in shaa Allah ☀️"
+        );
       }
 
       // Morning Azkar at 7:00
@@ -218,7 +251,10 @@ schedule.scheduleJob("* * * * *", async () => {
 
       // Evening reminder at 16:55
       if (hour === 16 && minute === 55) {
-        await bot.sendMessage(user.id, "🌙 Evening Azkar will start in 5 minutes, in shaa Allah 🤲");
+        await bot.sendMessage(
+          user.id,
+          "🌙 Evening Azkar will start in 5 minutes, in shaa Allah 🤲"
+        );
       }
 
       // Evening Azkar at 17:00
