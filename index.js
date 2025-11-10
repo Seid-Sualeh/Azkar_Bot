@@ -48,16 +48,28 @@ function formatAzkarMessage(azkarList, title, lang) {
   return msg;
 }
 
+/**
+ * Sends a potentially long message by chunking it into 4000 character segments.
+ * Crucially, it applies the reply_markup (e.g., the audio button) ONLY to the last chunk.
+ */
 async function sendLongMessage(chatId, text, options = {}) {
   const chunks = text.match(/[\s\S]{1,4000}/g) || [];
-  for (const chunk of chunks) {
-    await bot.sendMessage(chatId, chunk, options);
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const isLastChunk = i === chunks.length - 1; // Copy options and remove reply_markup for non-final chunks
+
+    let chunkOptions = { ...options };
+    if (!isLastChunk) {
+      delete chunkOptions.reply_markup;
+    }
+
+    await bot.sendMessage(chatId, chunk, chunkOptions); // Small delay to avoid hitting Telegram rate limits when sending many chunks
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
 
 // =========================
-// 🤖 BOT COMMANDS
+// 🤖 BOT COMMANDS (Start, Callback, Test, Help, Stop)
 // =========================
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
@@ -69,11 +81,11 @@ bot.onText(/\/start/, async (msg) => {
   }
 
   const welcome = `
-🕌 *As-salamu Alaikum ${name}!*  
-🌿 Welcome to the *Azkar Reminder Bot*  
+🕌 *As-salamu Alaikum ${name}!*  
+🌿 Welcome to the *Azkar Reminder Bot*  
 
-☀️ Morning Azkar → 7:00 AM  
-🌙 Evening Azkar → 5:00 PM  
+☀️ Morning Azkar → 7:00 AM  
+🌙 Evening Azkar → 5:00 PM  
 🌍 Detected timezone: *${timezone}*
 
 Would you like to subscribe to daily Azkar reminders?
@@ -89,7 +101,6 @@ Would you like to subscribe to daily Azkar reminders?
   });
 });
 
-// 📩 Handle subscription confirmation
 bot.on("callback_query", async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const data = callbackQuery.data;
@@ -140,7 +151,31 @@ bot.on("callback_query", async (callbackQuery) => {
   }
 });
 
-// 🧭 Test Command
+bot.onText(/\/help/, (msg) => {
+  const helpMessage = `
+🤖 *Available Commands:*
+/start - Start or restart the bot  
+/help - Show this help message  
+/test - Send a sample Azkar message  
+/stop - Unsubscribe from daily reminders  
+
+🕓 *Reminder Times:*  
+☀️ Morning: 7:00 AM  
+🌙 Evening: 5:00 PM (17:00)
+`;
+  bot.sendMessage(msg.chat.id, helpMessage, { parse_mode: "Markdown" });
+});
+
+bot.onText(/\/stop/, (msg) => {
+  const chatId = msg.chat.id;
+  users = users.filter((u) => u.id !== chatId);
+  bot.sendMessage(
+    chatId,
+    "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start"
+  );
+});
+
+// 🧭 Test Command (Uses the new sendLongMessage function)
 bot.onText(/\/test/, async (msg) => {
   const chatId = msg.chat.id;
   const now = moment().tz("Africa/Addis_Ababa");
@@ -172,7 +207,7 @@ bot.onText(/\/test/, async (msg) => {
 });
 
 // =========================
-// ⏰ GLOBAL AZKAR SCHEDULE
+// ⏰ GLOBAL AZKAR SCHEDULE (Uses the new sendLongMessage function)
 // =========================
 schedule.scheduleJob("* * * * *", async () => {
   const nowUTC = moment.utc();
@@ -181,19 +216,17 @@ schedule.scheduleJob("* * * * *", async () => {
       const userTime = nowUTC.clone().tz(user.timezone);
       const hour = userTime.hour();
       const minute = userTime.minute();
-      const lang = user.language;
+      const lang = user.language; // Morning reminder at 6:55
 
-      // Morning reminder at 6:55
       if (hour === 6 && minute === 55) {
-        bot.sendMessage(
+        await bot.sendMessage(
           user.id,
           "⏰ Morning Azkar will start in 5 minutes, in shaa Allah ☀️"
         );
-      }
+      } // Morning Azkar at 7:00
 
-      // Morning Azkar at 7:00
       if (hour === 7 && minute === 0) {
-        const msg = formatAzkarMessage(morningAzkar, "☀️ Morning Azkar", lang);
+        const msg = formatAzkarMessage(morningAzkar, "☀️ Morning Azkar", lang); // Using sendLongMessage ensures correct chunking and final button placement
         await sendLongMessage(user.id, msg, {
           parse_mode: "Markdown",
           reply_markup: {
@@ -207,19 +240,17 @@ schedule.scheduleJob("* * * * *", async () => {
             ],
           },
         });
-      }
+      } // Evening reminder at 16:55
 
-      // Evening reminder at 16:55
       if (hour === 16 && minute === 55) {
-        bot.sendMessage(
+        await bot.sendMessage(
           user.id,
           "🌙 Evening Azkar will start in 5 minutes, in shaa Allah 🤲"
         );
-      }
+      } // Evening Azkar at 17:00
 
-      // Evening Azkar at 17:00
       if (hour === 17 && minute === 0) {
-        const msg = formatAzkarMessage(eveningAzkar, "🌙 Evening Azkar", lang);
+        const msg = formatAzkarMessage(eveningAzkar, "🌙 Evening Azkar", lang); // Using sendLongMessage ensures correct chunking and final button placement
         await sendLongMessage(user.id, msg, {
           parse_mode: "Markdown",
           reply_markup: {
@@ -235,7 +266,10 @@ schedule.scheduleJob("* * * * *", async () => {
         });
       }
     } catch (e) {
-      console.error("Error sending scheduled azkar:", e.message);
+      console.error(
+        `Error sending scheduled azkar to user ${user.id}:`,
+        e.message
+      );
     }
   }
 });
