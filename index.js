@@ -580,8 +580,10 @@ const PORT = process.env.PORT || 10000;
 // 🎧 FIX: Using Telegram File IDs for reliable streaming playback.
 // *** You MUST replace these placeholders with the actual File IDs
 // *** obtained by sending the MP3 files to your bot and inspecting the log.
-const MORNING_AZKAR_AUDIO_URL = "YOUR_MORNING_AZKAR_TELEGRAM_FILE_ID"; 
-const EVENING_AZKAR_AUDIO_URL = "YOUR_EVENING_AZKAR_TELEGRAM_FILE_ID";
+const MORNING_AZKAR_AUDIO_URL =
+  "CQACAgQAAxkBAAIB1mkSF6YAATuqRMsf6ltsstN7cBF2AgACVBsAAnIgmFCdAp6NN7xkTzYE"; 
+const EVENING_AZKAR_AUDIO_URL =
+  "CQACAgQAAxkBAAIB12kSF8PTTm8Je5x7Q9FR8_xoimVdAAJVGwACciCYUAG5ohcJtejINgQ";
 
 // =========================
 // 🤖 TELEGRAM BOT SETUP
@@ -747,27 +749,7 @@ bot.onText(/\/test/, async (msg) => {
   await bot.sendAudio(chatId, audioLink, { caption: captionText, parse_mode: "Markdown" });
 });
 
-// =========================
-// 🎧 FILE ID CAPTURE (TEMPORARY CODE)
-// =========================
-bot.on('audio', (msg) => {
-    const chatId = msg.chat.id;
-    const fileId = msg.audio.file_id;
-    const fileName = msg.audio.title || "Untitled Audio";
 
-    console.log(`\n\n✅ AUDIO RECEIVED!`);
-    console.log(`File Name: ${fileName}`);
-    console.log(`Chat ID: ${chatId}`);
-    console.log(`⭐ FILE ID (COPY THIS): ${fileId}`);
-    console.log(`\n`);
-    
-    // Optional: Send the ID back to your chat for easy copying
-    bot.sendMessage(chatId, 
-        `Audio File ID Received:\n\`${fileId}\`\n\nCopy this ID and paste it into the MORNING/EVENING_AZKAR_AUDIO_URL constant.`,
-        { parse_mode: 'Markdown' }
-    );
-});
-// =========================
 
 // =========================
 // ⏰ GLOBAL AZKAR SCHEDULE
