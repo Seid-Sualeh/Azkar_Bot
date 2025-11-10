@@ -111,9 +111,11 @@ bot.on("callback_query", async (callbackQuery) => {
     else if (data === "lang_amharic") user.language = "Amharic";
 
     const msgByLang = {
-      Arabic: "✅ تم تعيين اللغة إلى العربية. ستتلقى الأذكار بهذه اللغة إن شاء الله.",
-      English: "✅ Language set to English. You'll now receive Azkar in English.",
-      Amharic: "✅ ቋንቋዎን ወደ አማርኛ ቀይረዋል። አዝካር በዚህ ቋንቋ ይደርሳችሁ።",
+      Arabic:
+        "✅ تم تعيين اللغة إلى العربية. ستتلقى الأذكار بهذه اللغة إن شاء الله.",
+      English:
+        "✅ Language set to English. You'll now receive Azkar in English.",
+      Amharic: "✅ ቋንቋዎን ወደ አማርኛ ቀይረዋል። አዝካር በአማርኛ ቋንቋ ይደርሳችሁ።",
     };
 
     return bot.sendMessage(chatId, msgByLang[user.language], { parse_mode: "Markdown" });
