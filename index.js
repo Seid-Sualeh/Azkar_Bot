@@ -19,7 +19,6 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const BASE_URL = process.env.BASE_URL;
 const PORT = process.env.PORT || 10000;
 
-// Initialize bot (webhook mode)
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
 bot.setWebHook(`${BASE_URL}/bot${TELEGRAM_BOT_TOKEN}`);
 
@@ -39,23 +38,22 @@ async function getUserTimezone() {
 
 function formatAzkarMessage(azkarList, title, lang) {
   let msg = `🌿 *${title}* 🌿\n\n`;
-
   azkarList.forEach((azkar, i) => {
     msg += `✨ *${i + 1}.*\n`;
-
-    if (lang === "Arabic") {
-      msg += `🕋 _${azkar.arabic}_\n`;
-    } else if (lang === "English") {
-      msg += `🇬🇧 *Meaning:* _${azkar.english}_\n`;
-    } else if (lang === "Amharic") {
-      msg += `🇪🇹 *ትርጉም:* _${azkar.amharic}_\n`;
-    }
-
-    msg += `🔁 *Repeat:* \`${azkar.repetitions}x\`\n`;
-    msg += `📖 *Source:* _${azkar.source}_\n\n`;
+    if (lang === "Arabic") msg += `🕋 _${azkar.arabic}_\n`;
+    else if (lang === "English") msg += `🇬🇧 *Meaning:* _${azkar.english}_\n`;
+    else if (lang === "Amharic") msg += `🇪🇹 *ትርጉም:* _${azkar.amharic}_\n`;
+    msg += `🔁 *Repeat:* \`${azkar.repetitions}x\`\n📖 *Source:* _${azkar.source}_\n\n`;
   });
-
   return msg;
+}
+
+async function sendLongMessage(chatId, text, options = {}) {
+  const chunks = text.match(/[\s\S]{1,4000}/g) || [];
+  for (const chunk of chunks) {
+    await bot.sendMessage(chatId, chunk, options);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }
 
 // =========================
@@ -75,7 +73,7 @@ bot.onText(/\/start/, async (msg) => {
 🌿 Welcome to the *Azkar Reminder Bot*  
 
 ☀️ Morning Azkar → 7:00 AM  
-🌙 Evening Azkar → 17:00 PM  
+🌙 Evening Azkar → 5:00 PM  
 🌍 Detected timezone: *${timezone}*
 
 Would you like to subscribe to daily Azkar reminders?
@@ -99,7 +97,6 @@ bot.on("callback_query", async (callbackQuery) => {
 
   if (data.startsWith("lang_")) {
     if (!user) return;
-
     if (data === "lang_arabic") user.language = "Arabic";
     else if (data === "lang_english") user.language = "English";
     else if (data === "lang_amharic") user.language = "Amharic";
@@ -108,7 +105,7 @@ bot.on("callback_query", async (callbackQuery) => {
       Arabic:
         "✅ تم تعيين اللغة إلى العربية. ستتلقى الأذكار بهذه اللغة إن شاء الله.",
       English:
-        "✅ Language set to English. You’ll now receive Azkar in English.",
+        "✅ Language set to English. You'll now receive Azkar in English.",
       Amharic: "✅ ቋንቋዎን ወደ አማርኛ ቀይረዋል። አዝካር በዚህ ቋንቋ ይደርሳችሁ።",
     };
 
@@ -143,37 +140,8 @@ bot.on("callback_query", async (callbackQuery) => {
   }
 });
 
-// 📘 Help Command
-bot.onText(/\/help/, (msg) => {
-  const helpMessage = `
-🤖 *Available Commands:*
-/start - Start or restart the bot  
-/help - Show this help message  
-/test - Send a sample Azkar message  
-/stop - Unsubscribe from daily reminders  
-
-🕓 *Reminder Times:*  
-☀️ Morning: 7:00 AM  
-🌙 Evening: 5:00 PM (17:00)
-
-💡 Tip: You can choose Arabic, English, or Amharic language anytime!
-`;
-
-  bot.sendMessage(msg.chat.id, helpMessage, { parse_mode: "Markdown" });
-});
-
-// 🛑 Stop Command
-bot.onText(/\/stop/, (msg) => {
-  const chatId = msg.chat.id;
-  users = users.filter((u) => u.id !== chatId);
-  bot.sendMessage(
-    chatId,
-    "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start"
-  );
-});
-
 // 🧭 Test Command
-bot.onText(/\/test/, (msg) => {
+bot.onText(/\/test/, async (msg) => {
   const chatId = msg.chat.id;
   const now = moment().tz("Africa/Addis_Ababa");
   const user = users.find((u) => u.id === chatId);
@@ -184,85 +152,90 @@ bot.onText(/\/test/, (msg) => {
     ? formatAzkarMessage(morningAzkar, "☀️ Morning Azkar", lang)
     : formatAzkarMessage(eveningAzkar, "🌙 Evening Azkar", lang);
 
-  const chunks = message.match(/[\s\S]{1,4000}/g) || [];
-  chunks.forEach((chunk) => {
-    bot.sendMessage(chatId, chunk, {
-      parse_mode: "Markdown",
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: isMorning
-                ? "🎧 Play Morning Azkar Audio"
-                : "🎧 Play Evening Azkar Audio",
-              url: isMorning
-                ? "https://www.tvquran.com/en/selection/3/adhkar-of-the-morning"
-                : "https://www.tvquran.com/en/selection/4/embeddable",
-            },
-          ],
+  await sendLongMessage(chatId, message, {
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: isMorning
+              ? "🎧 Play Morning Azkar Audio"
+              : "🎧 Play Evening Azkar Audio",
+            url: isMorning
+              ? "https://www.tvquran.com/en/selection/3/adhkar-of-the-morning"
+              : "https://www.tvquran.com/en/selection/4/embeddable",
+          },
         ],
-      },
-    });
+      ],
+    },
   });
 });
 
 // =========================
-// ⏰ AZKAR SCHEDULE (GLOBAL)
+// ⏰ GLOBAL AZKAR SCHEDULE
 // =========================
 schedule.scheduleJob("* * * * *", async () => {
   const nowUTC = moment.utc();
   for (const user of users) {
-    const userTime = nowUTC.clone().tz(user.timezone);
-    const hour = userTime.hour();
-    const minute = userTime.minute();
-    const lang = user.language;
+    try {
+      const userTime = nowUTC.clone().tz(user.timezone);
+      const hour = userTime.hour();
+      const minute = userTime.minute();
+      const lang = user.language;
 
-    if (hour === 6 && minute === 55) {
-      bot.sendMessage(
-        user.id,
-        "⏰ Morning Azkar will start in 5 minutes, in shaa Allah ☀️"
-      );
-    }
+      // Morning reminder at 6:55
+      if (hour === 6 && minute === 55) {
+        bot.sendMessage(
+          user.id,
+          "⏰ Morning Azkar will start in 5 minutes, in shaa Allah ☀️"
+        );
+      }
 
-    if (hour === 7 && minute === 0) {
-      const msg = formatAzkarMessage(morningAzkar, "☀️ Morning Azkar", lang);
-      bot.sendMessage(user.id, msg, {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "🎧 Play Morning Azkar Audio",
-                url: "https://www.tvquran.com/en/selection/3/adhkar-of-the-morning",
-              },
+      // Morning Azkar at 7:00
+      if (hour === 7 && minute === 0) {
+        const msg = formatAzkarMessage(morningAzkar, "☀️ Morning Azkar", lang);
+        await sendLongMessage(user.id, msg, {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🎧 Play Morning Azkar Audio",
+                  url: "https://www.tvquran.com/en/selection/3/adhkar-of-the-morning",
+                },
+              ],
             ],
-          ],
-        },
-      });
-    }
+          },
+        });
+      }
 
-    if (hour === 16 && minute === 55) {
-      bot.sendMessage(
-        user.id,
-        "🌙 Evening Azkar will start in 5 minutes, in shaa Allah 🤲"
-      );
-    }
+      // Evening reminder at 16:55
+      if (hour === 16 && minute === 55) {
+        bot.sendMessage(
+          user.id,
+          "🌙 Evening Azkar will start in 5 minutes, in shaa Allah 🤲"
+        );
+      }
 
-    if (hour === 17 && minute === 0) {
-      const msg = formatAzkarMessage(eveningAzkar, "🌙 Evening Azkar", lang);
-      bot.sendMessage(user.id, msg, {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "🎧 Play Evening Azkar Audio",
-                url: "https://www.tvquran.com/en/selection/4/embeddable",
-              },
+      // Evening Azkar at 17:00
+      if (hour === 17 && minute === 0) {
+        const msg = formatAzkarMessage(eveningAzkar, "🌙 Evening Azkar", lang);
+        await sendLongMessage(user.id, msg, {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🎧 Play Evening Azkar Audio",
+                  url: "https://www.tvquran.com/en/selection/4/embeddable",
+                },
+              ],
             ],
-          ],
-        },
-      });
+          },
+        });
+      }
+    } catch (e) {
+      console.error("Error sending scheduled azkar:", e.message);
     }
   }
 });
@@ -276,5 +249,4 @@ app.post(`/bot${TELEGRAM_BOT_TOKEN}`, (req, res) => {
 });
 
 app.get("/", (req, res) => res.send("🌿 Azkar Bot is running, Alhamdulillah!"));
-
 app.listen(PORT, () => console.log(`✅ Bot running on port ${PORT}`));
