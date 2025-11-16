@@ -225,6 +225,11 @@ bot.on("callback_query", async (callbackQuery) => {
       }
     );
   }
+
+  // Support quick actions from inline menu
+  if (data === "mytime") {
+    return sendUserTime(chatId);
+  }
 });
 
 bot.onText(/\/help/, (msg) => {
@@ -282,6 +287,11 @@ bot.onText(/\/test/, async (msg) => {
 // 🕐 Time Check Command
 bot.onText(/\/mytime/, async (msg) => {
   const chatId = msg.chat.id;
+  return sendUserTime(chatId);
+});
+
+// Helper to send time info for a given chatId (used by /mytime and inline menu)
+async function sendUserTime(chatId) {
   const user = users.find((u) => u.id === chatId);
 
   if (!user) {
@@ -311,8 +321,8 @@ bot.onText(/\/mytime/, async (msg) => {
 *Total Subscribed Users:* ${users.length}
   `;
 
-  bot.sendMessage(chatId, timeInfo, { parse_mode: "Markdown" });
-});
+  return bot.sendMessage(chatId, timeInfo, { parse_mode: "Markdown" });
+}
 
 // =========================
 // ⏰ AZKAR SCHEDULE - WITH DEBUG LOGGING
@@ -414,11 +424,6 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ Bot running on port ${PORT}`);
-  console.log(`📊 Loaded ${users.length} users from storage`);
-  console.log(`🌐 Webhook: ${BASE_URL}/bot${TELEGRAM_BOT_TOKEN}`);
-});
 
 // Handle incoming location messages to set user's timezone
 bot.on("location", async (msg) => {
@@ -441,8 +446,22 @@ bot.on("location", async (msg) => {
       });
     }
     saveUsers();
-    bot.sendMessage(chatId, `✅ Timezone set to *${tz}*. Thank you!`, {
+    // Confirm and show quick action menu
+    await bot.sendMessage(chatId, `✅ Timezone set to *${tz}*. Thank you!`, {
       parse_mode: "Markdown",
+    });
+
+    // Inline menu with quick actions
+    await bot.sendMessage(chatId, "What would you like to do next?", {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "📿 Subscribe", callback_data: "subscribe_user" },
+            { text: "📍 Update Location", callback_data: "share_location" },
+          ],
+          [{ text: "🕓 My Time", callback_data: "mytime" }],
+        ],
+      },
     });
   } catch (err) {
     console.error("Error handling location:", err && err.message);
@@ -452,3 +471,35 @@ bot.on("location", async (msg) => {
     );
   }
 });
+
+app.listen(PORT, () => {
+  console.log(`✅ Bot running on port ${PORT}`);
+  console.log(`📊 Loaded ${users.length} users from storage`);
+  console.log(`🌐 Webhook: ${BASE_URL}/bot${TELEGRAM_BOT_TOKEN}`);
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
