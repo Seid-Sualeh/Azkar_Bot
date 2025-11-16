@@ -5,6 +5,17 @@ require("dotenv").config();
 const express = require("express");
 const TelegramBot = require("node-telegram-bot-api");
 const moment = require("moment-timezone");
+// moment-hijri extends moment with Islamic calendar support. Try to load it
+// but do not crash if the package is not installed — fall back to an API.
+let hasMomentHijri = false;
+try {
+  require("moment-hijri");
+  hasMomentHijri = true;
+} catch (err) {
+  console.warn(
+    "moment-hijri not installed — Hijri fallback will use AlAdhan API"
+  );
+}
 const schedule = require("node-schedule");
 const axios = require("axios");
 const tzlookup = require("tz-lookup");
@@ -28,6 +39,7 @@ const MORNING_AZKAR_AUDIO_URL =
   "CQACAgQAAxkBAAIB1mkSF6YAATuqRMsf6ltsstN7cBF2AgACVBsAAnIgmFCdAp6NN7xkTzYE";
 const EVENING_AZKAR_AUDIO_URL =
   "CQACAgQAAxkBAAIB12kSF8PTTm8Je5x7Q9FR8_xoimVdAAJVGwACciCYUAG5ohcJtejINgQ";
+const SURAH_KAHF_AUDIO_PATH = "./audio/surah_kahf.mp3";
 
 // 🗄️ Simple file-based storage for persistence
 const fs = require("fs");
@@ -79,6 +91,48 @@ async function getUserTimezone(lat, lon) {
   } catch {
     return "Africa/Addis_Ababa";
   }
+}
+
+// Update user's last active timestamp (creates user record if missing)
+async function updateLastActive(chatId) {
+  try {
+    const user = users.find((u) => u.id === chatId);
+    const now = moment().toISOString();
+    if (user) {
+      user.lastActive = now;
+      saveUsers();
+      return;
+    }
+
+    // If user doesn't exist yet, create minimal record with auto timezone
+    const tz = await getUserTimezone();
+    users.push({
+      id: chatId,
+      timezone: tz,
+      language: "Arabic",
+      tzSource: "auto",
+      lastActive: now,
+    });
+    saveUsers();
+  } catch (err) {
+    console.error("Error updating last active for", chatId, err && err.message);
+  }
+}
+
+// Return number of users active in the current calendar month
+function getMonthlyActiveCount() {
+  const now = moment();
+  return users.filter(
+    (u) => u.lastActive && moment(u.lastActive).isSame(now, "month")
+  ).length;
+}
+
+// Optionally: return number of users active in last 30 days
+function getActiveLast30DaysCount() {
+  const cutoff = moment().subtract(30, "days");
+  return users.filter(
+    (u) => u.lastActive && moment(u.lastActive).isAfter(cutoff)
+  ).length;
 }
 
 // 🕋 Format Azkar text based on user language
@@ -159,6 +213,8 @@ bot.on("callback_query", async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const data = callbackQuery.data;
   const user = users.find((u) => u.id === chatId);
+  // record activity for stats
+  await updateLastActive(chatId);
 
   if (data.startsWith("lang_")) {
     if (!user) return;
@@ -303,11 +359,14 @@ async function sendUserTime(chatId) {
 
   const nowUTC = moment.utc();
   const userTime = nowUTC.clone().tz(user.timezone);
+  // Hijri date (uses moment-hijri when available, otherwise AlAdhan API fallback)
+  const hijri = await getHijriString(userTime);
 
   const timeInfo = `
 🕐 *Your Current Settings:*
 • Your Timezone: *${user.timezone}*
 • Current Time: *${userTime.format("YYYY-MM-DD HH:mm:ss")}*
+• Hijri Date: *${hijri}*
 • Language: *${user.language}*
 • Next Morning Azkar: *7:00 AM*
 • Next Evening Azkar: *5:00 PM*
@@ -322,6 +381,27 @@ async function sendUserTime(chatId) {
   `;
 
   return bot.sendMessage(chatId, timeInfo, { parse_mode: "Markdown" });
+}
+
+// Get Hijri date string for a given moment instance.
+// Uses moment-hijri if available, otherwise falls back to AlAdhan API.
+async function getHijriString(momentObj) {
+  try {
+    if (hasMomentHijri) {
+      return momentObj.clone().format("iD iMMMM iYYYY");
+    }
+
+    // Fallback: call AlAdhan API: expects DD-MM-YYYY
+    const date = momentObj.format("DD-MM-YYYY");
+    const res = await axios.get(`https://api.aladhan.com/v1/gToH?date=${date}`);
+    if (res && res.data && res.data.data && res.data.data.hijri) {
+      const h = res.data.data.hijri;
+      return `${h.day} ${h.month.en} ${h.year}`;
+    }
+  } catch (err) {
+    console.warn("Failed to get Hijri date via API:", err && err.message);
+  }
+  return "N/A";
 }
 
 // =========================
@@ -375,6 +455,37 @@ schedule.scheduleJob("* * * * *", async () => {
           caption: "*Morning Azkar Audio*",
           parse_mode: "Markdown",
         });
+
+        // If today is Friday (moment day(): Sunday=0 ... Friday=5), send Surah al-Kahf
+        try {
+          if (userTime.day() === 5) {
+            // Announce Surah al-Kahf
+            await bot.sendMessage(
+              user.id,
+              "📖 Today is Friday — please read or listen to *Surah al-Kahf* (Quran 18).",
+              { parse_mode: "Markdown" }
+            );
+
+            // Prefer local audio if available, otherwise send a link to quran.com
+            if (fs.existsSync(SURAH_KAHF_AUDIO_PATH)) {
+              await bot.sendAudio(user.id, SURAH_KAHF_AUDIO_PATH, {
+                caption: "*Surah al-Kahf (Quran 18)*",
+                parse_mode: "Markdown",
+              });
+            } else {
+              await bot.sendMessage(
+                user.id,
+                "🔗 Surah al-Kahf (Chapter 18): https://quran.com/18",
+                { disable_web_page_preview: true }
+              );
+            }
+          }
+        } catch (err) {
+          console.error(
+            `Error sending Surah al-Kahf to ${user.id}:`,
+            err && err.message
+          );
+        }
       }
 
       // Evening reminder at 16:55
@@ -424,6 +535,29 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Record simple activity for any incoming message (text, sticker, etc.)
+bot.on("message", async (msg) => {
+  try {
+    if (msg && msg.chat && msg.chat.id) {
+      await updateLastActive(msg.chat.id);
+    }
+  } catch (err) {
+    console.error("Error in message activity handler:", err && err.message);
+  }
+});
+
+// Stats command to report monthly/30-day active users
+bot.onText(/\/stats|\/monthly/, async (msg) => {
+  const chatId = msg.chat.id;
+  const monthly = getMonthlyActiveCount();
+  const last30 = getActiveLast30DaysCount();
+  const text = `📊 *Usage Stats:*
+• Total subscribed users: *${users.length}*
+• Active this calendar month: *${monthly}*
+• Active in last 30 days: *${last30}*
+`;
+  bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
+});
 
 // Handle incoming location messages to set user's timezone
 bot.on("location", async (msg) => {
@@ -437,12 +571,14 @@ bot.on("location", async (msg) => {
     if (user) {
       user.timezone = tz;
       user.tzSource = "location";
+      user.lastActive = moment().toISOString();
     } else {
       users.push({
         id: chatId,
         timezone: tz,
         language: "Arabic",
         tzSource: "location",
+        lastActive: moment().toISOString(),
       });
     }
     saveUsers();
@@ -477,29 +613,3 @@ app.listen(PORT, () => {
   console.log(`📊 Loaded ${users.length} users from storage`);
   console.log(`🌐 Webhook: ${BASE_URL}/bot${TELEGRAM_BOT_TOKEN}`);
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
