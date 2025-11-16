@@ -193,7 +193,7 @@ bot.onText(/\/start/, async (msg) => {
 
 ☀️ Morning Azkar → 7:00 AM
 🌙 Evening Azkar → 5:00 PM
-🌍 Detected timezone: *${timezone}*
+🌍 Detected timezone: *${timezone}* to get your time zone please share location
 
 Would you like to subscribe to daily Azkar reminders?
 `;
@@ -215,6 +215,10 @@ bot.on("callback_query", async (callbackQuery) => {
   const user = users.find((u) => u.id === chatId);
   // record activity for stats
   await updateLastActive(chatId);
+  // Acknowledge callback to remove loading state in the client
+  try {
+    await bot.answerCallbackQuery(callbackQuery.id);
+  } catch (e) {}
 
   if (data.startsWith("lang_")) {
     if (!user) return;
@@ -286,23 +290,54 @@ bot.on("callback_query", async (callbackQuery) => {
   if (data === "mytime") {
     return sendUserTime(chatId);
   }
+  if (data === "test") {
+    return sendTestTo(chatId);
+  }
+  if (data === "stop") {
+    users = users.filter((u) => u.id !== chatId);
+    saveUsers();
+    return bot.sendMessage(
+      chatId,
+      "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start"
+    );
+  }
+  if (data === "help") {
+    return sendHelp(chatId);
+  }
+  if (data === "stats") {
+    const monthly = getMonthlyActiveCount();
+    const last30 = getActiveLast30DaysCount();
+    const text = `📊 *Usage Stats:*
+• Total subscribed users: *${users.length}*
+• Active this calendar month: *${monthly}*
+• Active in last 30 days: *${last30}*
+`;
+    return bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
+  }
 });
 
 bot.onText(/\/help/, (msg) => {
+  return sendHelp(msg.chat.id);
+});
+
+// Helper that sends help text (used by /help and menu callbacks)
+function sendHelp(chatId) {
   const helpMessage = `
 🤖 *Available Commands:*
 /start - Start or restart the bot
+/menu - Show interactive menu
 /help - Show this help message
 /test - Send a sample Azkar message
 /stop - Unsubscribe from daily reminders
 /mytime - Check your current time and settings
+/stats - Show monthly/30-day active users
 
 🕓 *Reminder Times:*
 ☀️ Morning: 7:00 AM
 🌙 Evening: 5:00 PM (17:00)
 `;
-  bot.sendMessage(msg.chat.id, helpMessage, { parse_mode: "Markdown" });
-});
+  return bot.sendMessage(chatId, helpMessage, { parse_mode: "Markdown" });
+}
 
 bot.onText(/\/stop/, (msg) => {
   const chatId = msg.chat.id;
@@ -340,10 +375,64 @@ bot.onText(/\/test/, async (msg) => {
   });
 });
 
+// Helper to send test Azkar to a chat (used by /test and menu)
+async function sendTestTo(chatId) {
+  const now = moment().tz("Africa/Addis_Ababa");
+  const user = users.find((u) => u.id === chatId);
+  const lang = user ? user.language : "Arabic";
+
+  const isMorning = now.hour() >= 5 && now.hour() < 12;
+  const message = isMorning
+    ? formatAzkarMessage(morningAzkar, "☀️ Morning Azkar", lang)
+    : formatAzkarMessage(eveningAzkar, "🌙 Evening Azkar", lang);
+
+  const audioLink = isMorning
+    ? MORNING_AZKAR_AUDIO_URL
+    : EVENING_AZKAR_AUDIO_URL;
+  const captionText = isMorning
+    ? "*Morning Azkar Audio*"
+    : "*Evening Azkar Audio*";
+
+  await sendLongMessage(chatId, message, { parse_mode: "Markdown" });
+  await bot.sendAudio(chatId, audioLink, {
+    caption: captionText,
+    parse_mode: "Markdown",
+  });
+}
+
 // 🕐 Time Check Command
 bot.onText(/\/mytime/, async (msg) => {
   const chatId = msg.chat.id;
   return sendUserTime(chatId);
+});
+
+// Menu command - show inline buttons for all main actions
+bot.onText(/\/menu/, async (msg) => {
+  const chatId = msg.chat.id;
+  await bot.sendMessage(chatId, "🌿 Main Menu — choose an action:", {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "📿 Subscribe", callback_data: "subscribe_user" },
+          { text: "📍 Share Location", callback_data: "share_location" },
+        ],
+        [
+          { text: "🕓 My Time", callback_data: "mytime" },
+          { text: "🧪 Test Azkar", callback_data: "test" },
+        ],
+        [
+          { text: "📊 Stats", callback_data: "stats" },
+          { text: "🛑 Unsubscribe", callback_data: "stop" },
+        ],
+        [{ text: "❓ Help", callback_data: "help" }],
+        [
+          { text: "🕋 Arabic", callback_data: "lang_arabic" },
+          { text: "🇬🇧 English", callback_data: "lang_english" },
+          { text: "🇪🇹 Amharic", callback_data: "lang_amharic" },
+        ],
+      ],
+    },
+  });
 });
 
 // Helper to send time info for a given chatId (used by /mytime and inline menu)
@@ -610,6 +699,6 @@ bot.on("location", async (msg) => {
 
 app.listen(PORT, () => {
   console.log(`✅ Bot running on port ${PORT}`);
-  console.log(`📊 Loaded ${users.length} users from storage`);
-  console.log(`🌐 Webhook: ${BASE_URL}/bot${TELEGRAM_BOT_TOKEN}`);
+  // console.log(`📊 Loaded ${users.length} users from storage`);
+ 
 });
