@@ -35,9 +35,9 @@ const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
 bot.setWebHook(`${BASE_URL}/bot${TELEGRAM_BOT_TOKEN}`);
 
 // 🎧 Telegram File IDs for reliable playback
-const MORNING_AZKAR_AUDIO_URL =
+const   EVENING_AZKAR_AUDIO_URL=
   "CQACAgQAAxkBAAIB1mkSF6YAATuqRMsf6ltsstN7cBF2AgACVBsAAnIgmFCdAp6NN7xkTzYE";
-const EVENING_AZKAR_AUDIO_URL =
+const MORNING_AZKAR_AUDIO_URL =
   "CQACAgQAAxkBAAIB12kSF8PTTm8Je5x7Q9FR8_xoimVdAAJVGwACciCYUAG5ohcJtejINgQ";
 const SURAH_KAHF_AUDIO_PATH = "./audio/surah_kahf.mp3";
 
@@ -425,6 +425,8 @@ bot.onText(/\/menu/, async (msg) => {
           { text: "🛑 Unsubscribe", callback_data: "stop" },
         ],
         [{ text: "❓ Help", callback_data: "help" }],
+        [{ text: "📖 Read Surah", callback_data: "read_surah" }],
+        [{ text: "📅 Date in Hijri", callback_data: "date_hijri" }],
         [
           { text: "🕋 Arabic", callback_data: "lang_arabic" },
           { text: "🇬🇧 English", callback_data: "lang_english" },
