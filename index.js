@@ -13,7 +13,7 @@ try {
   hasMomentHijri = true;
 } catch (err) {
   console.warn(
-    "moment-hijri not installed — Hijri fallback will use AlAdhan API"
+    "moment-hijri not installed — Hijri fallback will use AlAdhan API",
   );
 }
 const schedule = require("node-schedule");
@@ -35,7 +35,7 @@ const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
 bot.setWebHook(`${BASE_URL}/bot${TELEGRAM_BOT_TOKEN}`);
 
 // 🎧 Telegram File IDs for reliable playback
-const   EVENING_AZKAR_AUDIO_URL=
+const EVENING_AZKAR_AUDIO_URL =
   "CQACAgQAAxkBAAIB1mkSF6YAATuqRMsf6ltsstN7cBF2AgACVBsAAnIgmFCdAp6NN7xkTzYE";
 const MORNING_AZKAR_AUDIO_URL =
   "CQACAgQAAxkBAAIB12kSF8PTTm8Je5x7Q9FR8_xoimVdAAJVGwACciCYUAG5ohcJtejINgQ";
@@ -123,7 +123,7 @@ async function updateLastActive(chatId) {
 function getMonthlyActiveCount() {
   const now = moment();
   return users.filter(
-    (u) => u.lastActive && moment(u.lastActive).isSame(now, "month")
+    (u) => u.lastActive && moment(u.lastActive).isSame(now, "month"),
   ).length;
 }
 
@@ -131,7 +131,7 @@ function getMonthlyActiveCount() {
 function getActiveLast30DaysCount() {
   const cutoff = moment().subtract(30, "days");
   return users.filter(
-    (u) => u.lastActive && moment(u.lastActive).isAfter(cutoff)
+    (u) => u.lastActive && moment(u.lastActive).isAfter(cutoff),
   ).length;
 }
 
@@ -176,6 +176,47 @@ async function sendLongMessage(chatId, text, options = {}) {
 // =========================
 // 🤖 TELEGRAM BOT COMMANDS
 // =========================
+// Function to calculate days until Ramadan
+function getDaysUntilRamadan() {
+  const now = moment();
+  const currentYear = now.year();
+
+  // Ramadan dates for the next few years (approximate, adjust as needed)
+  const ramadanDates = {
+    2026: { start: moment("2026-02-18"), end: moment("2026-03-19") },
+    2027: { start: moment("2027-02-08"), end: moment("2027-03-10") },
+    2028: { start: moment("2028-01-28"), end: moment("2028-02-26") },
+  };
+
+  // Check if current date is within Ramadan
+  const ramadanInfo = ramadanDates[currentYear];
+  if (
+    ramadanInfo &&
+    now.isBetween(ramadanInfo.start, ramadanInfo.end, null, "[]")
+  ) {
+    return { days: 0, message: "Ramadan Mubarak! 🌙" };
+  }
+
+  // Find the next Ramadan start date
+  let nextRamadanStart = null;
+  for (let year = currentYear; year <= currentYear + 2; year++) {
+    if (ramadanDates[year] && now.isBefore(ramadanDates[year].start)) {
+      nextRamadanStart = ramadanDates[year].start;
+      break;
+    }
+  }
+
+  if (!nextRamadanStart) {
+    return { days: null, message: "Ramadan dates not available." };
+  }
+
+  const daysUntil = nextRamadanStart.diff(now, "days");
+  return {
+    days: daysUntil,
+    message: `Ramadan starts in ${daysUntil} days! 🌙`,
+  };
+}
+
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   const name = msg.from.first_name || "Akhi/Akhti";
@@ -197,6 +238,13 @@ bot.onText(/\/start/, async (msg) => {
 
 Would you like to subscribe to daily Azkar reminders?
 `;
+
+  const ramadanCountdown = getDaysUntilRamadan();
+  if (ramadanCountdown.days !== null) {
+    await bot.sendMessage(chatId, ramadanCountdown.message, {
+      parse_mode: "Markdown",
+    });
+  }
 
   bot.sendMessage(chatId, welcome, {
     parse_mode: "Markdown",
@@ -268,7 +316,7 @@ bot.on("callback_query", async (callbackQuery) => {
             ],
           ],
         },
-      }
+      },
     );
   }
 
@@ -282,7 +330,7 @@ bot.on("callback_query", async (callbackQuery) => {
           keyboard: [[{ text: "Share Location", request_location: true }]],
           one_time_keyboard: true,
         },
-      }
+      },
     );
   }
 
@@ -298,7 +346,7 @@ bot.on("callback_query", async (callbackQuery) => {
     saveUsers();
     return bot.sendMessage(
       chatId,
-      "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start"
+      "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start",
     );
   }
   if (data === "help") {
@@ -313,6 +361,12 @@ bot.on("callback_query", async (callbackQuery) => {
 • Active in last 30 days: *${last30}*
 `;
     return bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
+  }
+  if (data === "ramadan") {
+    const ramadanCountdown = getDaysUntilRamadan();
+    return bot.sendMessage(chatId, ramadanCountdown.message, {
+      parse_mode: "Markdown",
+    });
   }
 });
 
@@ -331,6 +385,7 @@ function sendHelp(chatId) {
 /stop - Unsubscribe from daily reminders
 /mytime - Check your current time and settings
 /stats - Show monthly/30-day active users
+/ramadan - Show days until Ramadan
 
 🕓 *Reminder Times:*
 ☀️ Morning: 7:00 AM
@@ -345,7 +400,7 @@ bot.onText(/\/stop/, (msg) => {
   saveUsers();
   bot.sendMessage(
     chatId,
-    "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start"
+    "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start",
   );
 });
 
@@ -406,6 +461,15 @@ bot.onText(/\/mytime/, async (msg) => {
   return sendUserTime(chatId);
 });
 
+// 🕌 Ramadan Countdown Command
+bot.onText(/\/ramadan/, async (msg) => {
+  const chatId = msg.chat.id;
+  const ramadanCountdown = getDaysUntilRamadan();
+  await bot.sendMessage(chatId, ramadanCountdown.message, {
+    parse_mode: "Markdown",
+  });
+});
+
 // Menu command - show inline buttons for all main actions
 bot.onText(/\/menu/, async (msg) => {
   const chatId = msg.chat.id;
@@ -432,6 +496,7 @@ bot.onText(/\/menu/, async (msg) => {
           { text: "🇬🇧 English", callback_data: "lang_english" },
           { text: "🇪🇹 Amharic", callback_data: "lang_amharic" },
         ],
+        [{ text: "🕌 Ramadan Countdown", callback_data: "ramadan" }],
       ],
     },
   });
@@ -444,7 +509,7 @@ async function sendUserTime(chatId) {
   if (!user) {
     return bot.sendMessage(
       chatId,
-      "Please use /start first to set up your timezone."
+      "Please use /start first to set up your timezone.",
     );
   }
 
@@ -469,6 +534,9 @@ async function sendUserTime(chatId) {
 🌙 5:00 PM - Evening Azkar
 
 *Total Subscribed Users:* ${users.length}
+
+*Ramadan Countdown:*
+${getDaysUntilRamadan().message}
   `;
 
   return bot.sendMessage(chatId, timeInfo, { parse_mode: "Markdown" });
@@ -506,7 +574,7 @@ schedule.scheduleJob("* * * * *", async () => {
     console.log(
       `[${nowUTC.format("YYYY-MM-DD HH:mm:ss")} UTC] Checking ${
         users.length
-      } users`
+      } users`,
     );
   }
 
@@ -521,8 +589,8 @@ schedule.scheduleJob("* * * * *", async () => {
       if ((hour === 7 && minute === 0) || (hour === 17 && minute === 0)) {
         console.log(
           `🕐 SENDING to user ${user.id} at ${userTime.format(
-            "YYYY-MM-DD HH:mm:ss"
-          )} ${user.timezone}`
+            "YYYY-MM-DD HH:mm:ss",
+          )} ${user.timezone}`,
         );
       }
 
@@ -531,14 +599,14 @@ schedule.scheduleJob("* * * * *", async () => {
         console.log(`⏰ Morning reminder to ${user.id} in ${user.timezone}`);
         await bot.sendMessage(
           user.id,
-          "⏰ Morning Azkar will start in 5 minutes, in shaa Allah ☀️"
+          "⏰ Morning Azkar will start in 5 minutes, in shaa Allah ☀️",
         );
       }
 
       // Morning Azkar at 7:00
       if (hour === 7 && minute === 0) {
         console.log(
-          `☀️ SENDING MORNING AZKAR to ${user.id} in ${user.timezone}`
+          `☀️ SENDING MORNING AZKAR to ${user.id} in ${user.timezone}`,
         );
         const msg = formatAzkarMessage(morningAzkar, "☀️ Morning Azkar", lang);
         await sendLongMessage(user.id, msg, { parse_mode: "Markdown" });
@@ -547,6 +615,14 @@ schedule.scheduleJob("* * * * *", async () => {
           parse_mode: "Markdown",
         });
 
+        // Send Ramadan countdown
+        const ramadanCountdown = getDaysUntilRamadan();
+        if (ramadanCountdown.days !== null) {
+          await bot.sendMessage(user.id, ramadanCountdown.message, {
+            parse_mode: "Markdown",
+          });
+        }
+
         // If today is Friday (moment day(): Sunday=0 ... Friday=5), send Surah al-Kahf
         try {
           if (userTime.day() === 5) {
@@ -554,7 +630,7 @@ schedule.scheduleJob("* * * * *", async () => {
             await bot.sendMessage(
               user.id,
               "📖 Today is Friday — please read or listen to *Surah al-Kahf* (Quran 18).",
-              { parse_mode: "Markdown" }
+              { parse_mode: "Markdown" },
             );
 
             // Prefer local audio if available, otherwise send a link to quran.com
@@ -567,14 +643,14 @@ schedule.scheduleJob("* * * * *", async () => {
               await bot.sendMessage(
                 user.id,
                 "🔗 Surah al-Kahf (Chapter 18): https://quran.com/18",
-                { disable_web_page_preview: true }
+                { disable_web_page_preview: true },
               );
             }
           }
         } catch (err) {
           console.error(
             `Error sending Surah al-Kahf to ${user.id}:`,
-            err && err.message
+            err && err.message,
           );
         }
       }
@@ -584,14 +660,14 @@ schedule.scheduleJob("* * * * *", async () => {
         console.log(`🌙 Evening reminder to ${user.id} in ${user.timezone}`);
         await bot.sendMessage(
           user.id,
-          "🌙 Evening Azkar will start in 5 minutes, in shaa Allah 🤲"
+          "🌙 Evening Azkar will start in 5 minutes, in shaa Allah 🤲",
         );
       }
 
       // Evening Azkar at 17:00
       if (hour === 17 && minute === 0) {
         console.log(
-          `🌙 SENDING EVENING AZKAR to ${user.id} in ${user.timezone}`
+          `🌙 SENDING EVENING AZKAR to ${user.id} in ${user.timezone}`,
         );
         const msg = formatAzkarMessage(eveningAzkar, "🌙 Evening Azkar", lang);
         await sendLongMessage(user.id, msg, { parse_mode: "Markdown" });
@@ -599,6 +675,14 @@ schedule.scheduleJob("* * * * *", async () => {
           caption: "*Evening Azkar Audio*",
           parse_mode: "Markdown",
         });
+
+        // Send Ramadan countdown
+        const ramadanCountdown = getDaysUntilRamadan();
+        if (ramadanCountdown.days !== null) {
+          await bot.sendMessage(user.id, ramadanCountdown.message, {
+            parse_mode: "Markdown",
+          });
+        }
       }
     } catch (e) {
       console.error(`⚠️ Error sending azkar to user ${user.id}:`, e.message);
@@ -694,7 +778,7 @@ bot.on("location", async (msg) => {
     console.error("Error handling location:", err && err.message);
     bot.sendMessage(
       chatId,
-      "Sorry, I could not determine your timezone from that location."
+      "Sorry, I could not determine your timezone from that location.",
     );
   }
 });
@@ -702,5 +786,4 @@ bot.on("location", async (msg) => {
 app.listen(PORT, () => {
   console.log(`✅ Bot running on port ${PORT}`);
   // console.log(`📊 Loaded ${users.length} users from storage`);
- 
 });
