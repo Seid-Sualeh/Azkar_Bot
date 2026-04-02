@@ -41,30 +41,98 @@ const MORNING_AZKAR_AUDIO_URL =
   "CQACAgQAAxkBAAIB12kSF8PTTm8Je5x7Q9FR8_xoimVdAAJVGwACciCYUAG5ohcJtejINgQ";
 const SURAH_KAHF_AUDIO_PATH = "./audio/surah_kahf.mp3";
 
-// 🗄️ Simple file-based storage for persistence
-const fs = require("fs");
-const USERS_FILE = "./users.json";
+// 🗄️ Database-based storage for persistence
+const { initializeDatabase, userOperations } = require("./database/init");
 
-// Load users from file
-let users = loadUsers();
+// Initialize database
+initializeDatabase();
 
-function loadUsers() {
+// Load users from database
+let users = [];
+
+// Load all users into memory for faster access (sync operation on startup)
+function loadUsersFromDB() {
   try {
-    if (fs.existsSync(USERS_FILE)) {
-      const data = fs.readFileSync(USERS_FILE, "utf8");
-      return JSON.parse(data);
-    }
+    const rows = userOperations.getAll.all();
+    users = rows.map(row => ({
+      id: row.chat_id,
+      timezone: row.timezone,
+      language: row.language,
+      tzSource: row.tz_source,
+      lastActive: row.last_active,
+      // Add prayer notification preferences
+      prayerNotifications: Boolean(row.prayer_notifications),
+      fajrNotification: Boolean(row.fajr_notification),
+      dhuhrNotification: Boolean(row.dhuhr_notification),
+      asrNotification: Boolean(row.asr_notification),
+      maghribNotification: Boolean(row.maghrib_notification),
+      ishaNotification: Boolean(row.isha_notification)
+    }));
+    console.log(`📊 Loaded ${users.length} users from database`);
   } catch (error) {
-    console.error("Error loading users:", error.message);
+    console.error("Error loading users from database:", error.message);
+    users = []; // Fallback to empty array
   }
-  return [];
 }
 
-function saveUsers() {
+// Load users on startup
+loadUsersFromDB();
+
+// Save user to database
+function saveUserToDB(user) {
   try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+    const existing = userOperations.getByChatId.get(user.id);
+    if (existing) {
+      // Update existing user
+      userOperations.update.run(
+        user.timezone || undefined,
+        user.language || undefined,
+        user.tzSource || undefined,
+        user.lastActive || undefined,
+        user.prayerNotifications !== undefined ? (user.prayerNotifications ? 1 : 0) : undefined,
+        user.fajrNotification !== undefined ? (user.fajrNotification ? 1 : 0) : undefined,
+        user.dhuhrNotification !== undefined ? (user.dhuhrNotification ? 1 : 0) : undefined,
+        user.asrNotification !== undefined ? (user.asrNotification ? 1 : 0) : undefined,
+        user.maghribNotification !== undefined ? (user.maghribNotification ? 1 : 0) : undefined,
+        user.ishaNotification !== undefined ? (user.ishaNotification ? 1 : 0) : undefined,
+        user.id
+      );
+    } else {
+      // Create new user
+      userOperations.create.run(
+        user.id,
+        user.timezone,
+        user.language,
+        user.tzSource,
+        user.lastActive
+      );
+    }
+    
+    // Update in-memory cache
+    const index = users.findIndex(u => u.id === user.id);
+    if (index >= 0) {
+      users[index] = user;
+    } else {
+      users.push(user);
+    }
   } catch (error) {
-    console.error("Error saving users:", error.message);
+    console.error("Error saving user to database:", error.message);
+  }
+}
+
+// Get user by chatId
+function getUserById(chatId) {
+  return users.find(u => u.id === chatId);
+}
+
+// Delete user from database
+function deleteUserFromDB(chatId) {
+  try {
+    userOperations.delete.run(chatId);
+    // Remove from memory
+    users = users.filter(u => u.id !== chatId);
+  } catch (error) {
+    console.error("Error deleting user from database:", error.message);
   }
 }
 
@@ -100,20 +168,21 @@ async function updateLastActive(chatId) {
     const now = moment().toISOString();
     if (user) {
       user.lastActive = now;
-      saveUsers();
+      saveUserToDB(user);
       return;
     }
 
     // If user doesn't exist yet, create minimal record with auto timezone
     const tz = await getUserTimezone();
-    users.push({
+    const newUser = {
       id: chatId,
       timezone: tz,
       language: "Arabic",
       tzSource: "auto",
       lastActive: now,
-    });
-    saveUsers();
+    };
+    users.push(newUser);
+    saveUserToDB(newUser);
   } catch (err) {
     console.error("Error updating last active for", chatId, err && err.message);
   }
@@ -223,10 +292,11 @@ bot.onText(/\/start/, async (msg) => {
   const timezone = await getUserTimezone();
 
   if (!users.find((u) => u.id === chatId)) {
-    users.push({ id: chatId, timezone, language: "Arabic", tzSource: "auto" });
-    saveUsers();
-    console.log(`🆕 New user registered: ${chatId} in ${timezone}`);
-  }
+     const newUser = { id: chatId, timezone, language: "Arabic", tzSource: "auto" };
+     users.push(newUser);
+     saveUserToDB(newUser);
+     console.log(`🆕 New user registered: ${chatId} in ${timezone}`);
+   }
 
   const welcome = `
 🕌 *As-salamu Alaikum ${name}!*
@@ -271,11 +341,11 @@ bot.on("callback_query", async (callbackQuery) => {
   if (data.startsWith("lang_")) {
     if (!user) return;
 
-    if (data === "lang_arabic") user.language = "Arabic";
-    else if (data === "lang_english") user.language = "English";
-    else if (data === "lang_amharic") user.language = "Amharic";
+     if (data === "lang_arabic") user.language = "Arabic";
+     else if (data === "lang_english") user.language = "English";
+     else if (data === "lang_amharic") user.language = "Amharic";
 
-    saveUsers();
+     saveUserToDB(user);
 
     const msgByLang = {
       Arabic:
@@ -299,7 +369,7 @@ bot.on("callback_query", async (callbackQuery) => {
         language: "Arabic",
         tzSource: "auto",
       });
-      saveUsers();
+      saveUserToDB(user);
     }
 
     bot.sendMessage(
@@ -341,14 +411,14 @@ bot.on("callback_query", async (callbackQuery) => {
   if (data === "test") {
     return sendTestTo(chatId);
   }
-  if (data === "stop") {
-    users = users.filter((u) => u.id !== chatId);
-    saveUsers();
-    return bot.sendMessage(
-      chatId,
-      "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start",
-    );
-  }
+   if (data === "stop") {
+     users = users.filter((u) => u.id !== chatId);
+     deleteUserFromDB(chatId);
+     return bot.sendMessage(
+       chatId,
+       "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start",
+     );
+   }
   if (data === "help") {
     return sendHelp(chatId);
   }
@@ -395,14 +465,14 @@ function sendHelp(chatId) {
 }
 
 bot.onText(/\/stop/, (msg) => {
-  const chatId = msg.chat.id;
-  users = users.filter((u) => u.id !== chatId);
-  saveUsers();
-  bot.sendMessage(
-    chatId,
-    "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start",
-  );
-});
+   const chatId = msg.chat.id;
+   users = users.filter((u) => u.id !== chatId);
+   deleteUserFromDB(chatId);
+   bot.sendMessage(
+     chatId,
+     "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start",
+   );
+ });
 
 // 🧭 Test Command
 bot.onText(/\/test/, async (msg) => {
@@ -561,6 +631,107 @@ async function getHijriString(momentObj) {
     console.warn("Failed to get Hijri date via API:", err && err.message);
   }
   return "N/A";
+}
+
+// Get prayer times for a user based on their timezone/location
+// We'll approximate location from timezone since we don't store exact coordinates
+async function getPrayerTimesForUser(user, dateObj) {
+  try {
+    // Since we don't store exact coordinates, we'll use a simple approach:
+    // Use the timezone to get a rough location (this is not perfect but works for demo)
+    // In a production app, you'd want to store user coordinates when they share location
+    
+    // For now, we'll return mock prayer times based on common patterns
+    // In a real implementation, you'd call AlAdhan API with coordinates
+    const dateStr = dateObj.format("YYYY-MM-DD");
+    
+    // Check if we have cached prayer times for this user/date
+    const cached = prayerTimeOperations.getByChatIdAndDate.get(user.id, dateStr);
+    if (cached) {
+      return {
+        fajr: cached.fajr,
+        dhuhr: cached.dhuhr,
+        asr: cached.asr,
+        maghrib: cached.maghrib,
+        isha: cached.isha
+      };
+    }
+    
+    // Since we don't have exact coordinates, we'll use approximate times
+    // This is a simplification - in reality you'd need user's latitude/longitude
+    // For demonstration, we'll use fixed offsets from solar noon
+    
+    // Get approximate solar noon for the timezone (simplified)
+    const noonMoment = dateObj.clone().tz(user.timezone).set({ hour: 12, minute: 0, second: 0, millisecond: 0 });
+    
+    // Approximate prayer times (these should really come from AlAdhan API with coordinates)
+    const fajrMoment = noonMoment.clone().subtract(4, 'hours');  // Approximate
+    const dhuhrMoment = noonMoment.clone();                      // Solar noon
+    const asrMoment = noonMoment.clone().add(3, 'hours');        // Approximate
+    const maghribMoment = noonMoment.clone().add(6, 'hours');    // Approximate sunset
+    const ishaMoment = noonMoment.clone().add(8, 'hours');       // Approximate
+    
+    const prayerTimes = {
+      fajr: fajrMoment.format("HH:mm"),
+      dhuhr: dhuhrMoment.format("HH:mm"),
+      asr: asrMoment.format("HH:mm"),
+      maghrib: maghribMoment.format("HH:mm"),
+      isha: ishaMoment.format("HH:mm")
+    };
+    
+    // Cache the prayer times
+    prayerTimeOperations.upsert.run(
+      user.id,
+      dateStr,
+      prayerTimes.fajr,
+      prayerTimes.dhuhr,
+      prayerTimes.asr,
+      prayerTimes.maghrib,
+      prayerTimes.isha
+    );
+    
+    return prayerTimes;
+  } catch (error) {
+    console.error("Error getting prayer times for user:", error.message);
+    // Return default times as fallback
+    return {
+      fajr: "05:00",
+      dhuhr: "12:00",
+      asr: "15:30",
+      maghrib: "18:00",
+      isha: "19:30"
+    };
+  }
+}
+
+// Format prayer time message for sending to user
+function formatPrayerTimeMessage(prayerTimes, lang) {
+  let msg = `🕌 *Prayer Times for Today* 🕌\n\n`;
+  
+  if (lang === "Arabic") {
+    msg += `🕋 الفجر: *${prayerTimes.fajr}*\n`;
+    msg += `🕋 الظهر: *${prayerTimes.dhuhr}*\n`;
+    msg += `🕋 العصر: *${prayerTimes.asr}*\n`;
+    msg += `🕋 المغرب: *${prayerTimes.maghrib}*\n`;
+    msg += `🕋 العشاء: *${prayerTimes.isha}*\n\n`;
+    msg += "لا تنسى الصلاة في وقتها\n";
+  } else if (lang === "English") {
+    msg += `🕋 Fajr: *${prayerTimes.fajr}*\n`;
+    msg += `🕋 Dhuhr: *${prayerTimes.dhuhr}*\n`;
+    msg += `🕋 Asr: *${prayerTimes.asr}*\n`;
+    msg += `🕋 Maghrib: *${prayerTimes.maghrib}*\n`;
+    msg += `🕋 Isha: *${prayerTimes.isha}*\n\n`;
+    msg += "Don't forget to pray on time\n";
+  } else if (lang === "Amharic") {
+    msg += `🕋 የጠዋት: *${prayerTimes.fajr}*\n`;
+    msg += `🕋 ሰዓት: *${prayerTimes.dhuhr}*\n`;
+    msg += `🕋 የአረቀተሰዓት: *${prayerTimes.asr}*\n`;
+    msg += `🕋 የጠዋት ጊዜ: *${prayerTimes.maghrib}*\n`;
+    msg += `🕋 ሌሊት: *${prayerTimes.isha}*\n\n`;
+    msg += "አትቀርብ የጠዋት ሰዓት።\n";
+  }
+  
+  return msg;
 }
 
 // =========================
@@ -747,16 +918,17 @@ bot.on("location", async (msg) => {
       user.timezone = tz;
       user.tzSource = "location";
       user.lastActive = moment().toISOString();
-    } else {
-      users.push({
-        id: chatId,
-        timezone: tz,
-        language: "Arabic",
-        tzSource: "location",
-        lastActive: moment().toISOString(),
-      });
-    }
-    saveUsers();
+     } else {
+       const newUser = {
+         id: chatId,
+         timezone: tz,
+         language: "Arabic",
+         tzSource: "location",
+         lastActive: moment().toISOString(),
+       };
+       users.push(newUser);
+       saveUserToDB(newUser);
+     }
     // Confirm and show quick action menu
     await bot.sendMessage(chatId, `✅ Timezone set to *${tz}*. Thank you!`, {
       parse_mode: "Markdown",
