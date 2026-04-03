@@ -32,13 +32,7 @@ const BASE_URL = process.env.BASE_URL;
 const PORT = process.env.PORT || 10000;
 
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
-
-// For local testing, use polling instead of webhook
-// Comment out the webhook line below for local testing:
-// bot.setWebHook(`${BASE_URL}/bot${TELEGRAM_BOT_TOKEN}`);
-
-// Uncomment for local testing:
-// bot.startPolling();
+bot.setWebHook(`${BASE_URL}/bot${TELEGRAM_BOT_TOKEN}`);
 
 // 🎧 Telegram File IDs for reliable playback
 const EVENING_AZKAR_AUDIO_URL =
@@ -319,15 +313,6 @@ function getDaysUntilRamadan() {
     message: `Ramadan starts in ${daysUntil} days! 🌙`,
   };
 }
-
-// TEMPORARY: Log all messages and reply with chat ID (remove after getting your ID)
-bot.on('message', (msg) => {
-  console.log(`📨 Message from Chat ID: ${msg.chat.id}, User: ${msg.from.first_name} (@${msg.from.username}), Text: "${msg.text}"`);
-  // Temporarily reply with chat ID for any message
-  if (msg.text && !msg.text.startsWith('/')) {
-    bot.sendMessage(msg.chat.id, `🔍 Your Chat ID is: \`${msg.chat.id}\`\n\nSend this to yourself: \`/addadmin ${msg.chat.id}\``);
-  }
-});
 
 // Main command handlers
 bot.onText(/\/start/, async (msg) => {
