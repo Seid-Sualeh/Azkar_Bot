@@ -279,6 +279,7 @@ If you see this error: `Error: /opt/render/project/src/node_modules/better-sqlit
 4. **Alternative**: Use a different database solution like PostgreSQL
 
 **Quick Fix for Existing Deployment**:
+
 ```bash
 # On your local machine
 rm -rf node_modules
