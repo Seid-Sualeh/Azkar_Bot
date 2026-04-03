@@ -50,9 +50,6 @@ const {
   channelPostOperations,
 } = require("./database/init");
 
-// Initialize database
-initializeDatabase();
-
 // Load users from database
 let users = [];
 

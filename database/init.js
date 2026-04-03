@@ -73,6 +73,9 @@ function initializeDatabase() {
   console.log('Database initialized successfully');
 }
 
+// Initialize the database immediately
+initializeDatabase();
+
 // User operations
 const userOperations = {
   // Get user by chat_id
