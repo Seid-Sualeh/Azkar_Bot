@@ -94,12 +94,14 @@ The database will be automatically initialized on first run.
 | `/feedback` | Send feedback or suggestions |
 | `/test` | Receive a sample Azkar message |
 | `/ramadan` | Check days until Ramadan |
-| `/stats` | View usage statistics |
+| `/stats` | **Admin only**: View usage statistics |
+| `/usercount` | **Admin only**: View detailed user count statistics |
 | `/stop` | Unsubscribe from reminders |
 | `/broadcast` | **Admin only**: Send announcements to all users |
 | `/addadmin <chat_id>` | **Admin only**: Add a new admin |
 | `/removeadmin <chat_id>` | **Admin only**: Remove an admin |
 | `/listadmins` | **Admin only**: List all current admins |
+| `/viewfeedback` | **Admin only**: View recent user feedback |
 
 ### Interactive Menu
 Use `/menu` to access all features through an intuitive inline keyboard interface.

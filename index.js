@@ -470,6 +470,9 @@ bot.on("callback_query", async (callbackQuery) => {
     return sendHelp(chatId);
   }
   if (data === "stats") {
+    if (!isAdmin(chatId)) {
+      return bot.sendMessage(chatId, "❌ This command is only available to administrators.");
+    }
     const monthly = getMonthlyActiveCount();
     const last30 = getActiveLast30DaysCount();
     const text = `📊 *Usage Stats:*
@@ -507,6 +510,253 @@ bot.on("callback_query", async (callbackQuery) => {
     }
     return bot.sendMessage(chatId, promptMessage, { parse_mode: "Markdown" });
   }
+
+  // Date in Hijri callback
+  if (data === "date_hijri") {
+    const now = moment();
+    const hijriDate = hasMomentHijri ? now.format('iYYYY/iM/iD') : 'Hijri calendar not available';
+    const gregorianDate = now.format('MMMM D, YYYY');
+    const message = `📅 *Date Information:*\n\n🌍 Gregorian: ${gregorianDate}\n🌙 Hijri: ${hijriDate}`;
+    return bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
+  }
+
+  // Read Surah callback - show Quran surah selection
+  if (data === "read_surah") {
+    const quranSurahs = [
+      "Al-Fatiha (1)", "Al-Baqarah (2)", "Aal-E-Imran (3)", "An-Nisa (4)", "Al-Ma'idah (5)",
+      "Al-An'am (6)", "Al-A'raf (7)", "Al-Anfal (8)", "At-Taubah (9)", "Yunus (10)",
+      "Hud (11)", "Yusuf (12)", "Ar-Ra'd (13)", "Ibrahim (14)", "Al-Hijr (15)",
+      "An-Nahl (16)", "Al-Isra (17)", "Al-Kahf (18)", "Maryam (19)", "Ta-Ha (20)",
+      "Al-Anbiya (21)", "Al-Hajj (22)", "Al-Mu'minun (23)", "An-Nur (24)", "Al-Furqan (25)",
+      "Ash-Shu'ara (26)", "An-Naml (27)", "Al-Qasas (28)", "Al-Ankabut (29)", "Ar-Rum (30)"
+    ];
+
+    const keyboard = [];
+    for (let i = 0; i < quranSurahs.length; i += 3) {
+      const row = quranSurahs.slice(i, i + 3).map((surah, index) => ({
+        text: surah,
+        callback_data: `surah_${i + index + 1}`
+      }));
+      keyboard.push(row);
+    }
+
+    // Add more surahs option and back button
+    keyboard.push(
+      [{ text: "📚 More Surahs (31-60)", callback_data: "surahs_31_60" }],
+      [{ text: "📚 More Surahs (61-114)", callback_data: "surahs_61_114" }],
+      [{ text: "⬅️ Back to Menu", callback_data: "back_to_main" }]
+    );
+
+    return bot.sendMessage(chatId, "📖 *Select a Surah to Read:*\n\nChoose from the first 30 surahs:", {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: keyboard,
+      },
+    });
+  }
+
+  // Handle surah selection
+  if (data.startsWith("surah_")) {
+    const surahNumber = parseInt(data.replace("surah_", ""));
+    // For now, provide a link to quran.com since we don't have the full Quran text
+    const surahMessage = `📖 *Surah ${surahNumber}*\n\n🔗 Read the full surah at: https://quran.com/${surahNumber}\n\n📱 You can also use Quran apps or websites to read the complete text.`;
+    return bot.sendMessage(chatId, surahMessage, {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "📖 Choose Another Surah", callback_data: "read_surah" }],
+          [{ text: "⬅️ Back to Menu", callback_data: "back_to_main" }]
+        ]
+      }
+    });
+  }
+
+  // Handle more surahs options
+  if (data === "surahs_31_60") {
+    const quranSurahs = [
+      "Luqman (31)", "As-Sajdah (32)", "Al-Ahzab (33)", "Saba (34)", "Fatir (35)",
+      "Ya-Sin (36)", "As-Saffat (37)", "Sad (38)", "Az-Zumar (39)", "Ghafir (40)",
+      "Fussilat (41)", "Ash-Shura (42)", "Az-Zukhruf (43)", "Ad-Dukhan (44)", "Al-Jathiyah (45)",
+      "Al-Ahqaf (46)", "Muhammad (47)", "Al-Fath (48)", "Al-Hujurat (49)", "Qaf (50)",
+      "Adh-Dhariyat (51)", "At-Tur (52)", "An-Najm (53)", "Al-Qamar (54)", "Ar-Rahman (55)",
+      "Al-Waqi'ah (56)", "Al-Hadid (57)", "Al-Mujadilah (58)", "Al-Hashr (59)", "Al-Mumtahanah (60)"
+    ];
+
+    const keyboard = [];
+    for (let i = 0; i < quranSurahs.length; i += 3) {
+      const row = quranSurahs.slice(i, i + 3).map((surah, index) => ({
+        text: surah,
+        callback_data: `surah_${i + index + 31}`
+      }));
+      keyboard.push(row);
+    }
+
+    keyboard.push(
+      [{ text: "⬅️ Back to First 30", callback_data: "read_surah" }],
+      [{ text: "📚 Surahs 61-114", callback_data: "surahs_61_114" }],
+      [{ text: "⬅️ Back to Menu", callback_data: "back_to_main" }]
+    );
+
+    return bot.sendMessage(chatId, "📖 *Select a Surah to Read:*\n\nSurahs 31-60:", {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: keyboard,
+      },
+    });
+  }
+
+  if (data === "surahs_61_114") {
+    const quranSurahs = [
+      "As-Saff (61)", "Al-Jumu'ah (62)", "Al-Munafiqun (63)", "At-Taghabun (64)", "At-Talaq (65)",
+      "At-Tahrim (66)", "Al-Mulk (67)", "Al-Qalam (68)", "Al-Haqqah (69)", "Al-Ma'arij (70)",
+      "Nuh (71)", "Al-Jinn (72)", "Al-Muzzammil (73)", "Al-Muddaththir (74)", "Al-Qiyamah (75)",
+      "Al-Insan (76)", "Al-Mursalat (77)", "An-Naba (78)", "An-Nazi'at (79)", "Abasa (80)",
+      "At-Takwir (81)", "Al-Infitar (82)", "Al-Mutaffifin (83)", "Al-Inshiqaq (84)", "Al-Buruj (85)",
+      "At-Tariq (86)", "Al-A'la (87)", "Al-Ghashiyah (88)", "Al-Fajr (89)", "Al-Balad (90)",
+      "Ash-Shams (91)", "Al-Lail (92)", "Ad-Duha (93)", "Ash-Sharh (94)", "At-Tin (95)",
+      "Al-Alaq (96)", "Al-Qadr (97)", "Al-Bayyinah (98)", "Az-Zalzalah (99)", "Al-Adiyat (100)",
+      "Al-Qari'ah (101)", "At-Takathur (102)", "Al-Asr (103)", "Al-Humazah (104)", "Al-Fil (105)",
+      "Quraysh (106)", "Al-Ma'un (107)", "Al-Kawthar (108)", "Al-Kafirun (109)", "An-Nasr (110)",
+      "Al-Masad (111)", "Al-Ikhlas (112)", "Al-Falaq (113)", "An-Nas (114)"
+    ];
+
+    const keyboard = [];
+    for (let i = 0; i < quranSurahs.length; i += 3) {
+      const row = quranSurahs.slice(i, i + 3).map((surah, index) => ({
+        text: surah,
+        callback_data: `surah_${i + index + 61}`
+      }));
+      keyboard.push(row);
+    }
+
+    keyboard.push(
+      [{ text: "⬅️ Back to 31-60", callback_data: "surahs_31_60" }],
+      [{ text: "⬅️ Back to Menu", callback_data: "back_to_main" }]
+    );
+
+    return bot.sendMessage(chatId, "📖 *Select a Surah to Read:*\n\nSurahs 61-114:", {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: keyboard,
+      },
+    });
+  }
+
+  // Admin panel handler
+  if (data === "admin_panel") {
+    if (!isAdmin(chatId)) {
+      return bot.sendMessage(
+        chatId,
+        "❌ Access denied. Admin privileges required.",
+      );
+    }
+
+    return bot.sendMessage(chatId, "👑 *Admin Panel*", {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "📋 List Admins", callback_data: "admin_list" },
+            { text: "➕ Add Admin", callback_data: "admin_add" },
+          ],
+          [
+            { text: "➖ Remove Admin", callback_data: "admin_remove" },
+            { text: "💬 View Feedback", callback_data: "admin_feedback" },
+          ],
+          [
+            { text: "📢 Broadcast", callback_data: "admin_broadcast" },
+            { text: "📊 User Stats", callback_data: "admin_stats" },
+          ],
+          [
+            { text: "👥 User Count", callback_data: "admin_usercount" },
+          ],
+          [{ text: "⬅️ Back to Main Menu", callback_data: "back_to_main" }],
+        ],
+      },
+    });
+  }
+
+  // Admin action handlers
+  if (data === "admin_list") {
+    if (!isAdmin(chatId)) return;
+    // This will be handled by the /listadmins command
+    return bot.sendMessage(
+      chatId,
+      "Use `/listadmins` command to view all admins.",
+    );
+  }
+
+  if (data === "admin_add") {
+    if (!isAdmin(chatId)) return;
+    return bot.sendMessage(
+      chatId,
+      "Use `/addadmin <chat_id>` command to add a new admin.\n\nExample: `/addadmin 123456789`",
+    );
+  }
+
+  if (data === "admin_remove") {
+    if (!isAdmin(chatId)) return;
+    return bot.sendMessage(
+      chatId,
+      "Use `/removeadmin <chat_id>` command to remove an admin.\n\nExample: `/removeadmin 123456789`",
+    );
+  }
+
+  if (data === "admin_feedback") {
+    if (!isAdmin(chatId)) return;
+    // This will be handled by the /viewfeedback command
+    return bot.sendMessage(
+      chatId,
+      "Use `/viewfeedback` command to view recent user feedback.",
+    );
+  }
+
+  if (data === "admin_broadcast") {
+    if (!isAdmin(chatId)) return;
+    return bot.sendMessage(
+      chatId,
+      "Use `/broadcast <message>` command to send announcements.\n\nExample: `/broadcast Important announcement!`",
+    );
+  }
+
+  if (data === "admin_stats") {
+    if (!isAdmin(chatId)) return;
+    const monthly = getMonthlyActiveCount();
+    const last30 = getActiveLast30DaysCount();
+    const totalUsers = users.length;
+    const adminStats = `👑 *Admin Statistics:*
+• Total users: *${totalUsers}*
+• Active this month: *${monthly}*
+• Active last 30 days: *${last30}*
+• Database status: ✅ Connected`;
+    return bot.sendMessage(chatId, adminStats, { parse_mode: "Markdown" });
+  }
+
+  if (data === "admin_usercount") {
+    if (!isAdmin(chatId)) return;
+    const totalUsers = users.length;
+    const activeToday = users.filter(u => {
+      const lastActive = moment(u.lastActive);
+      return lastActive.isSame(moment(), 'day');
+    }).length;
+
+    const activeThisWeek = users.filter(u => {
+      const lastActive = moment(u.lastActive);
+      return lastActive.isAfter(moment().subtract(7, 'days'));
+    }).length;
+
+    const message = `👥 *User Count Statistics:*\n\n` +
+      `• Total registered users: *${totalUsers}*\n` +
+      `• Active today: *${activeToday}*\n` +
+      `• Active this week: *${activeThisWeek}*\n` +
+      `• Inactive users: *${totalUsers - activeThisWeek}*`;
+
+    return bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
+  }
+
+  if (data === "back_to_main") {
+    return sendMainMenu(chatId);
+  }
 });
 
 bot.onText(/\/help/, (msg) => {
@@ -515,7 +765,8 @@ bot.onText(/\/help/, (msg) => {
 
 // Helper that sends help text (used by /help and menu callbacks)
 function sendHelp(chatId) {
-  const helpMessage = `
+  const isUserAdmin = isAdmin(chatId);
+  let helpMessage = `
 🤖 *Available Commands:*
 /start - Start or restart the bot
 /menu - Show interactive menu
@@ -533,6 +784,21 @@ function sendHelp(chatId) {
 ☀️ Morning: 7:00 AM
 🌙 Evening: 5:00 PM (17:00)
 `;
+
+  if (isUserAdmin) {
+    helpMessage += `
+
+👑 *Admin Commands:*
+/addadmin <chat_id> - Add a new admin
+/removeadmin <chat_id> - Remove an admin
+/listadmins - List all current admins
+/viewfeedback - View recent user feedback
+/broadcast <message> - Send announcements to all users
+/stats - View usage statistics
+/usercount - View detailed user count statistics
+`;
+  }
+
   return bot.sendMessage(chatId, helpMessage, { parse_mode: "Markdown" });
 }
 
@@ -839,7 +1105,34 @@ bot.onText(/\/listadmins/, (msg) => {
   }
 });
 
-// Admin: View recent feedback
+// Admin: View user count
+bot.onText(/\/usercount/, (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAdmin(chatId)) {
+    bot.sendMessage(chatId, "❌ You don't have permission to view user count.");
+    return;
+  }
+
+  const totalUsers = users.length;
+  const activeToday = users.filter(u => {
+    const lastActive = moment(u.lastActive);
+    return lastActive.isSame(moment(), 'day');
+  }).length;
+
+  const activeThisWeek = users.filter(u => {
+    const lastActive = moment(u.lastActive);
+    return lastActive.isAfter(moment().subtract(7, 'days'));
+  }).length;
+
+  const message = `👥 *User Count Statistics:*\n\n` +
+    `• Total registered users: *${totalUsers}*\n` +
+    `• Active today: *${activeToday}*\n` +
+    `• Active this week: *${activeThisWeek}*\n` +
+    `• Inactive users: *${totalUsers - activeThisWeek}*`;
+
+  bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
+});
 bot.onText(/\/viewfeedback/, async (msg) => {
   const chatId = msg.chat.id;
 
@@ -1058,39 +1351,47 @@ bot.onText(/\/menu/, async (msg) => {
 // Helper to send main menu
 async function sendMainMenu(chatId) {
   const user = users.find((u) => u.id === chatId);
+  const isUserAdmin = isAdmin(chatId);
+
+  // Build keyboard based on admin status
+  const keyboard = [
+    [
+      { text: "📿 Subscribe", callback_data: "subscribe_user" },
+      { text: "📍 Share Location", callback_data: "share_location" },
+    ],
+    [
+      { text: "🕓 My Time", callback_data: "mytime" },
+      { text: "🧪 Test Azkar", callback_data: "test" },
+    ],
+    [
+      { text: "🕌 Prayer Times", callback_data: "prayer_times" },
+      { text: "🔔 Prayer Settings", callback_data: "prayer_settings" },
+    ],
+    [
+      { text: "💬 Feedback", callback_data: "feedback" },
+      { text: "� Unsubscribe", callback_data: "stop" },
+    ],
+    [
+      { text: "❓ Help", callback_data: "help" },
+    ],
+    [{ text: "📖 Read Surah", callback_data: "read_surah" }],
+    [{ text: "📅 Date in Hijri", callback_data: "date_hijri" }],
+    [
+      { text: "🕋 Arabic", callback_data: "lang_arabic" },
+      { text: "🇬🇧 English", callback_data: "lang_english" },
+      { text: "🇪🇹 Amharic", callback_data: "lang_amharic" },
+    ],
+    [{ text: "🕌 Ramadan Countdown", callback_data: "ramadan" }],
+  ];
+
+  // Add admin commands only for admins
+  if (isUserAdmin) {
+    keyboard.push([{ text: "👑 Admin Panel", callback_data: "admin_panel" }]);
+  }
 
   await bot.sendMessage(chatId, "🌿 Main Menu — choose an action:", {
     reply_markup: {
-      inline_keyboard: [
-        [
-          { text: "📿 Subscribe", callback_data: "subscribe_user" },
-          { text: "📍 Share Location", callback_data: "share_location" },
-        ],
-        [
-          { text: "🕓 My Time", callback_data: "mytime" },
-          { text: "🧪 Test Azkar", callback_data: "test" },
-        ],
-        [
-          { text: "🕌 Prayer Times", callback_data: "prayer_times" },
-          { text: "🔔 Prayer Settings", callback_data: "prayer_settings" },
-        ],
-        [
-          { text: "💬 Feedback", callback_data: "feedback" },
-          { text: "📊 Stats", callback_data: "stats" },
-        ],
-        [
-          { text: "🛑 Unsubscribe", callback_data: "stop" },
-          { text: "❓ Help", callback_data: "help" },
-        ],
-        [{ text: "📖 Read Surah", callback_data: "read_surah" }],
-        [{ text: "📅 Date in Hijri", callback_data: "date_hijri" }],
-        [
-          { text: "🕋 Arabic", callback_data: "lang_arabic" },
-          { text: "🇬🇧 English", callback_data: "lang_english" },
-          { text: "🇪🇹 Amharic", callback_data: "lang_amharic" },
-        ],
-        [{ text: "🕌 Ramadan Countdown", callback_data: "ramadan" }],
-      ],
+      inline_keyboard: keyboard,
     },
   });
 }
@@ -1260,42 +1561,6 @@ async function toggleAllPrayerNotifications(chatId, callbackQuery = null) {
     } catch (e) {}
   }
 }
-
-// Menu command - show inline buttons for all main actions
-bot.onText(/\/menu/, async (msg) => {
-  const chatId = msg.chat.id;
-  await bot.sendMessage(chatId, "🌿 Main Menu — choose an action:", {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: "📿 Subscribe", callback_data: "subscribe_user" },
-          { text: "📍 Share Location", callback_data: "share_location" },
-        ],
-        [
-          { text: "🕓 My Time", callback_data: "mytime" },
-          { text: "🧪 Test Azkar", callback_data: "test" },
-        ],
-        [
-          { text: "📊 Stats", callback_data: "stats" },
-          { text: "🛑 Unsubscribe", callback_data: "stop" },
-        ],
-        [
-          { text: "💬 Feedback", callback_data: "send_feedback" },
-          { text: "🕌 Prayer Settings", callback_data: "prayer_settings" },
-        ],
-        [{ text: "❓ Help", callback_data: "help" }],
-        [{ text: "📖 Read Surah", callback_data: "read_surah" }],
-        [{ text: "📅 Date in Hijri", callback_data: "date_hijri" }],
-        [
-          { text: "🕋 Arabic", callback_data: "lang_arabic" },
-          { text: "🇬🇧 English", callback_data: "lang_english" },
-          { text: "🇪🇹 Amharic", callback_data: "lang_amharic" },
-        ],
-        [{ text: "🕌 Ramadan Countdown", callback_data: "ramadan" }],
-      ],
-    },
-  });
-});
 
 // Helper to send time info for a given chatId (used by /mytime and inline menu)
 async function sendUserTime(chatId) {
@@ -1587,14 +1852,6 @@ schedule.scheduleJob("* * * * *", async () => {
           caption: "*Morning Azkar Audio*",
           parse_mode: "Markdown",
         });
-
-        // Send Ramadan countdown
-        const ramadanCountdown = getDaysUntilRamadan();
-        if (ramadanCountdown.days !== null) {
-          await bot.sendMessage(user.id, ramadanCountdown.message, {
-            parse_mode: "Markdown",
-          });
-        }
 
         // If today is Friday (moment day(): Sunday=0 ... Friday=5), send Surah al-Kahf
         try {
