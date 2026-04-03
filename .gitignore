@@ -3,3 +3,5 @@ node_modules/
 *.log
 .DS_Store
 add date top of bot fixed position in hijiriya,gorgorian and ethiopian calander to user directly day and date 
+.DEPLOYMENT_INSTRUCTIONS.md
+.plans

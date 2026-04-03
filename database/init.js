@@ -1,8 +1,8 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+const Database = require("better-sqlite3");
+const path = require("path");
 
 // Initialize database
-const db = new Database(path.join(__dirname, 'azkar_bot.db'));
+const db = new Database(path.join(__dirname, "azkar_bot.db"));
 
 // Create tables if they don't exist
 function initializeDatabase() {
@@ -70,7 +70,7 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_feedback_chat_id ON feedback(chat_id);
   `);
 
-  console.log('Database initialized successfully');
+  console.log("Database initialized successfully");
 }
 
 // Initialize the database immediately
@@ -113,7 +113,7 @@ const userOperations = {
   // Delete user
   delete: db.prepare(`
     DELETE FROM users WHERE chat_id = ?
-  `)
+  `),
 };
 
 // Prayer times operations
@@ -139,7 +139,7 @@ const prayerTimeOperations = {
   // Get prayer times for today
   getToday: db.prepare(`
     SELECT * FROM prayer_times WHERE chat_id = ? AND date = DATE('now')
-  `)
+  `),
 };
 
 // Feedback operations
@@ -161,7 +161,7 @@ const feedbackOperations = {
     JOIN users u ON f.chat_id = u.chat_id 
     ORDER BY f.created_at DESC 
     LIMIT ?
-  `)
+  `),
 };
 
 // Channel posts operations
@@ -174,7 +174,7 @@ const channelPostOperations = {
   // Get recent channel posts
   getRecent: db.prepare(`
     SELECT * FROM channel_posts ORDER BY posted_at DESC LIMIT ?
-  `)
+  `),
 };
 
 module.exports = {
@@ -183,5 +183,5 @@ module.exports = {
   userOperations,
   prayerTimeOperations,
   feedbackOperations,
-  channelPostOperations
+  channelPostOperations,
 };
