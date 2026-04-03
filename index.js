@@ -1,10 +1,10 @@
-// =========================
 // 🌿 GLOBAL AZKAR BOT FOR THE UMMAH
 // =========================
 require("dotenv").config();
 const express = require("express");
 const TelegramBot = require("node-telegram-bot-api");
 const moment = require("moment-timezone");
+const fs = require("fs");
 // moment-hijri extends moment with Islamic calendar support. Try to load it
 // but do not crash if the package is not installed — fall back to an API.
 let hasMomentHijri = false;
@@ -42,7 +42,13 @@ const MORNING_AZKAR_AUDIO_URL =
 const SURAH_KAHF_AUDIO_PATH = "./audio/surah_kahf.mp3";
 
 // 🗄️ Database-based storage for persistence
-const { initializeDatabase, userOperations } = require("./database/init");
+const {
+  initializeDatabase,
+  userOperations,
+  prayerTimeOperations,
+  feedbackOperations,
+  channelPostOperations,
+} = require("./database/init");
 
 // Initialize database
 initializeDatabase();
@@ -54,7 +60,7 @@ let users = [];
 function loadUsersFromDB() {
   try {
     const rows = userOperations.getAll.all();
-    users = rows.map(row => ({
+    users = rows.map((row) => ({
       id: row.chat_id,
       timezone: row.timezone,
       language: row.language,
@@ -66,7 +72,7 @@ function loadUsersFromDB() {
       dhuhrNotification: Boolean(row.dhuhr_notification),
       asrNotification: Boolean(row.asr_notification),
       maghribNotification: Boolean(row.maghrib_notification),
-      ishaNotification: Boolean(row.isha_notification)
+      ishaNotification: Boolean(row.isha_notification),
     }));
     console.log(`📊 Loaded ${users.length} users from database`);
   } catch (error) {
@@ -89,13 +95,37 @@ function saveUserToDB(user) {
         user.language || undefined,
         user.tzSource || undefined,
         user.lastActive || undefined,
-        user.prayerNotifications !== undefined ? (user.prayerNotifications ? 1 : 0) : undefined,
-        user.fajrNotification !== undefined ? (user.fajrNotification ? 1 : 0) : undefined,
-        user.dhuhrNotification !== undefined ? (user.dhuhrNotification ? 1 : 0) : undefined,
-        user.asrNotification !== undefined ? (user.asrNotification ? 1 : 0) : undefined,
-        user.maghribNotification !== undefined ? (user.maghribNotification ? 1 : 0) : undefined,
-        user.ishaNotification !== undefined ? (user.ishaNotification ? 1 : 0) : undefined,
-        user.id
+        user.prayerNotifications !== undefined
+          ? user.prayerNotifications
+            ? 1
+            : 0
+          : undefined,
+        user.fajrNotification !== undefined
+          ? user.fajrNotification
+            ? 1
+            : 0
+          : undefined,
+        user.dhuhrNotification !== undefined
+          ? user.dhuhrNotification
+            ? 1
+            : 0
+          : undefined,
+        user.asrNotification !== undefined
+          ? user.asrNotification
+            ? 1
+            : 0
+          : undefined,
+        user.maghribNotification !== undefined
+          ? user.maghribNotification
+            ? 1
+            : 0
+          : undefined,
+        user.ishaNotification !== undefined
+          ? user.ishaNotification
+            ? 1
+            : 0
+          : undefined,
+        user.id,
       );
     } else {
       // Create new user
@@ -104,12 +134,12 @@ function saveUserToDB(user) {
         user.timezone,
         user.language,
         user.tzSource,
-        user.lastActive
+        user.lastActive,
       );
     }
-    
+
     // Update in-memory cache
-    const index = users.findIndex(u => u.id === user.id);
+    const index = users.findIndex((u) => u.id === user.id);
     if (index >= 0) {
       users[index] = user;
     } else {
@@ -122,7 +152,7 @@ function saveUserToDB(user) {
 
 // Get user by chatId
 function getUserById(chatId) {
-  return users.find(u => u.id === chatId);
+  return users.find((u) => u.id === chatId);
 }
 
 // Delete user from database
@@ -130,7 +160,7 @@ function deleteUserFromDB(chatId) {
   try {
     userOperations.delete.run(chatId);
     // Remove from memory
-    users = users.filter(u => u.id !== chatId);
+    users = users.filter((u) => u.id !== chatId);
   } catch (error) {
     console.error("Error deleting user from database:", error.message);
   }
@@ -292,11 +322,22 @@ bot.onText(/\/start/, async (msg) => {
   const timezone = await getUserTimezone();
 
   if (!users.find((u) => u.id === chatId)) {
-     const newUser = { id: chatId, timezone, language: "Arabic", tzSource: "auto" };
-     users.push(newUser);
-     saveUserToDB(newUser);
-     console.log(`🆕 New user registered: ${chatId} in ${timezone}`);
-   }
+    const newUser = {
+      id: chatId,
+      timezone,
+      language: "Arabic",
+      tzSource: "auto",
+      prayerNotifications: true,
+      fajrNotification: true,
+      dhuhrNotification: true,
+      asrNotification: true,
+      maghribNotification: true,
+      ishaNotification: true,
+    };
+    users.push(newUser);
+    saveUserToDB(newUser);
+    console.log(`🆕 New user registered: ${chatId} in ${timezone}`);
+  }
 
   const welcome = `
 🕌 *As-salamu Alaikum ${name}!*
@@ -341,11 +382,11 @@ bot.on("callback_query", async (callbackQuery) => {
   if (data.startsWith("lang_")) {
     if (!user) return;
 
-     if (data === "lang_arabic") user.language = "Arabic";
-     else if (data === "lang_english") user.language = "English";
-     else if (data === "lang_amharic") user.language = "Amharic";
+    if (data === "lang_arabic") user.language = "Arabic";
+    else if (data === "lang_english") user.language = "English";
+    else if (data === "lang_amharic") user.language = "Amharic";
 
-     saveUserToDB(user);
+    saveUserToDB(user);
 
     const msgByLang = {
       Arabic:
@@ -363,13 +404,20 @@ bot.on("callback_query", async (callbackQuery) => {
   if (data === "subscribe_user") {
     if (!user) {
       const timezone = await getUserTimezone();
-      users.push({
+      const newUser = {
         id: chatId,
         timezone,
         language: "Arabic",
         tzSource: "auto",
-      });
-      saveUserToDB(user);
+        prayerNotifications: true,
+        fajrNotification: true,
+        dhuhrNotification: true,
+        asrNotification: true,
+        maghribNotification: true,
+        ishaNotification: true,
+      };
+      users.push(newUser);
+      saveUserToDB(newUser);
     }
 
     bot.sendMessage(
@@ -411,14 +459,14 @@ bot.on("callback_query", async (callbackQuery) => {
   if (data === "test") {
     return sendTestTo(chatId);
   }
-   if (data === "stop") {
-     users = users.filter((u) => u.id !== chatId);
-     deleteUserFromDB(chatId);
-     return bot.sendMessage(
-       chatId,
-       "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start",
-     );
-   }
+  if (data === "stop") {
+    users = users.filter((u) => u.id !== chatId);
+    deleteUserFromDB(chatId);
+    return bot.sendMessage(
+      chatId,
+      "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start",
+    );
+  }
   if (data === "help") {
     return sendHelp(chatId);
   }
@@ -438,6 +486,28 @@ bot.on("callback_query", async (callbackQuery) => {
       parse_mode: "Markdown",
     });
   }
+
+  if (data === "send_feedback") {
+    const user = users.find((u) => u.id === chatId);
+    if (!user) {
+      return bot.sendMessage(chatId, "Please use /start first to subscribe.", {
+        parse_mode: "Markdown",
+      });
+    }
+
+    let promptMessage = "";
+    if (user.language === "Arabic") {
+      promptMessage =
+        "💬 يرجى إرسال تعليقك أو اقتراحك لتحسين البوت:\n\nأو يمكنك استخدام: `/feedback [رسالتك]`";
+    } else if (user.language === "English") {
+      promptMessage =
+        "💬 Please send your feedback or suggestion to improve the bot:\n\nOr use: `/feedback [your message]`";
+    } else if (user.language === "Amharic") {
+      promptMessage =
+        "💬 ቦቱን ለማሳደግ አስተያየት ወይም ግጥም ያስተላልፉ:\n\nወይም ተጠቀሙ: `/feedback [መልክዎ]`";
+    }
+    return bot.sendMessage(chatId, promptMessage, { parse_mode: "Markdown" });
+  }
 });
 
 bot.onText(/\/help/, (msg) => {
@@ -456,6 +526,9 @@ function sendHelp(chatId) {
 /mytime - Check your current time and settings
 /stats - Show monthly/30-day active users
 /ramadan - Show days until Ramadan
+/prayer - Show today's prayer times
+/prayersettings - Configure prayer notifications
+/feedback - Send feedback or suggestions
 
 🕓 *Reminder Times:*
 ☀️ Morning: 7:00 AM
@@ -465,14 +538,14 @@ function sendHelp(chatId) {
 }
 
 bot.onText(/\/stop/, (msg) => {
-   const chatId = msg.chat.id;
-   users = users.filter((u) => u.id !== chatId);
-   deleteUserFromDB(chatId);
-   bot.sendMessage(
-     chatId,
-     "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start",
-   );
- });
+  const chatId = msg.chat.id;
+  users = users.filter((u) => u.id !== chatId);
+  deleteUserFromDB(chatId);
+  bot.sendMessage(
+    chatId,
+    "🛑 You have unsubscribed from Azkar reminders. You can rejoin anytime using /start",
+  );
+});
 
 // 🧭 Test Command
 bot.onText(/\/test/, async (msg) => {
@@ -540,6 +613,578 @@ bot.onText(/\/ramadan/, async (msg) => {
   });
 });
 
+// 🕌 Prayer Times Command
+bot.onText(/\/prayer|\/salah|\/prayertimes/, async (msg) => {
+  const chatId = msg.chat.id;
+  const user = users.find((u) => u.id === chatId);
+
+  if (!user) {
+    return bot.sendMessage(
+      chatId,
+      "Please use /start first to set up your timezone.",
+      {
+        parse_mode: "Markdown",
+      },
+    );
+  }
+
+  try {
+    const today = moment().tz(user.timezone).startOf("day");
+    const prayerTimes = await getPrayerTimesForUser(user, today);
+    const message = formatPrayerTimeMessage(prayerTimes, user.language);
+
+    await bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
+  } catch (error) {
+    console.error("Error getting prayer times:", error.message);
+    await bot.sendMessage(
+      chatId,
+      "Sorry, unable to fetch prayer times at the moment. Please try again later.",
+      {
+        parse_mode: "Markdown",
+      },
+    );
+  }
+});
+
+// 💬 Feedback Command
+bot.onText(/\/feedback/, async (msg) => {
+  const chatId = msg.chat.id;
+  const user = users.find((u) => u.id === chatId);
+
+  if (!user) {
+    return bot.sendMessage(chatId, "Please use /start first to subscribe.", {
+      parse_mode: "Markdown",
+    });
+  }
+
+  // Check if there's text after /feedback
+  const feedbackText = msg.text.replace(/^\/feedback\s*/, "").trim();
+
+  if (feedbackText) {
+    // Direct feedback submission
+    try {
+      feedbackOperations.create.run(chatId, feedbackText);
+      let responseMessage = "";
+      if (user.language === "Arabic") {
+        responseMessage = "✅ شكراً لك على ملاحظاتك! تم استلام تعليقك بنجاح.";
+      } else if (user.language === "English") {
+        responseMessage =
+          "✅ Thank you for your feedback! Your comment has been received successfully.";
+      } else if (user.language === "Amharic") {
+        responseMessage = "✅ ለአስተያየትዎ እናመሰግናለን! አስተያየትዎ ተቀበለ።";
+      }
+      await bot.sendMessage(chatId, responseMessage, {
+        parse_mode: "Markdown",
+      });
+    } catch (error) {
+      console.error("Error saving feedback:", error.message);
+      await bot.sendMessage(
+        chatId,
+        "Sorry, there was an error saving your feedback. Please try again later.",
+        {
+          parse_mode: "Markdown",
+        },
+      );
+    }
+  } else {
+    // Prompt for feedback
+    let promptMessage = "";
+    if (user.language === "Arabic") {
+      promptMessage =
+        "💬 يرجى إرسال تعليقك أو اقتراحك لتحسين البوت:\n\nأو يمكنك استخدام: `/feedback [رسالتك]`";
+    } else if (user.language === "English") {
+      promptMessage =
+        "💬 Please send your feedback or suggestion to improve the bot:\n\nOr use: `/feedback [your message]`";
+    } else if (user.language === "Amharic") {
+      promptMessage =
+        "💬 ቦቱን ለማሳደግ አስተያየት ወይም ግጥም ያስተላልፉ:\n\nወይም ተጠቀሙ: `/feedback [መልክዎ]`";
+    }
+    await bot.sendMessage(chatId, promptMessage, { parse_mode: "Markdown" });
+  }
+});
+
+// Handle feedback messages (any message starting with feedback context)
+bot.on("message", async (msg) => {
+  try {
+    if (
+      msg &&
+      msg.chat &&
+      msg.chat.id &&
+      msg.text &&
+      !msg.text.startsWith("/")
+    ) {
+      const chatId = msg.chat.id;
+      const user = users.find((u) => u.id === chatId);
+
+      // Check if user recently used /feedback command (within last 5 minutes)
+      if (user && user.lastFeedbackPrompt) {
+        const timeSincePrompt = moment().diff(
+          moment(user.lastFeedbackPrompt),
+          "minutes",
+        );
+        if (timeSincePrompt <= 5) {
+          // This is likely feedback
+          try {
+            feedbackOperations.create.run(chatId, msg.text);
+            user.lastFeedbackPrompt = null; // Clear the prompt flag
+
+            let responseMessage = "";
+            if (user.language === "Arabic") {
+              responseMessage =
+                "✅ شكراً لك على ملاحظاتك! تم استلام تعليقك بنجاح.";
+            } else if (user.language === "English") {
+              responseMessage =
+                "✅ Thank you for your feedback! Your comment has been received successfully.";
+            } else if (user.language === "Amharic") {
+              responseMessage = "✅ ለአስተያየትዎ እናመሰግናለን! አስተያየትዎ ተቀበለ።";
+            }
+            await bot.sendMessage(chatId, responseMessage, {
+              parse_mode: "Markdown",
+            });
+            return;
+          } catch (error) {
+            console.error("Error saving feedback:", error.message);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error in feedback message handler:", err && err.message);
+  }
+});
+
+// 📢 Admin Broadcasting Commands
+const ADMIN_CHAT_IDS = process.env.ADMIN_CHAT_IDS
+  ? process.env.ADMIN_CHAT_IDS.split(",").map((id) => id.trim())
+  : [];
+
+// Check if user is admin
+function isAdmin(chatId) {
+  return ADMIN_CHAT_IDS.includes(chatId.toString());
+}
+
+// Admin: View recent feedback
+bot.onText(/\/viewfeedback/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAdmin(chatId)) {
+    return bot.sendMessage(
+      chatId,
+      "❌ You don't have permission to use this command.",
+      {
+        parse_mode: "Markdown",
+      },
+    );
+  }
+
+  try {
+    const recentFeedback = feedbackOperations.getRecent.all(10);
+
+    if (!recentFeedback || recentFeedback.length === 0) {
+      return bot.sendMessage(chatId, "📭 No feedback received yet.", {
+        parse_mode: "Markdown",
+      });
+    }
+
+    let feedbackList = "📋 *Recent Feedback:*\n\n";
+    recentFeedback.forEach((fb, index) => {
+      const date = moment(fb.created_at).format("YYYY-MM-DD HH:mm");
+      feedbackList += `${index + 1}. *User ${fb.chat_id}* (${date}):\n${fb.message}\n\n`;
+    });
+
+    await bot.sendMessage(chatId, feedbackList, { parse_mode: "Markdown" });
+  } catch (error) {
+    console.error("Error getting feedback:", error.message);
+    await bot.sendMessage(
+      chatId,
+      "Sorry, there was an error retrieving feedback.",
+      {
+        parse_mode: "Markdown",
+      },
+    );
+  }
+});
+
+// Broadcast message to all users
+bot.onText(/\/broadcast/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAdmin(chatId)) {
+    return bot.sendMessage(
+      chatId,
+      "❌ You don't have permission to use this command.",
+      {
+        parse_mode: "Markdown",
+      },
+    );
+  }
+
+  const broadcastText = msg.text.replace(/^\/broadcast\s*/, "").trim();
+
+  if (!broadcastText) {
+    return bot.sendMessage(
+      chatId,
+      "📢 Please provide a message to broadcast.\n\nUsage: `/broadcast [your message]`",
+      {
+        parse_mode: "Markdown",
+      },
+    );
+  }
+
+  // Confirm broadcast
+  await bot.sendMessage(
+    chatId,
+    `📢 Are you sure you want to broadcast this message to *${users.length}* users?\n\n"${broadcastText}"`,
+    {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "✅ Yes, Send",
+              callback_data: `confirm_broadcast:${Buffer.from(broadcastText).toString("base64")}`,
+            },
+            { text: "❌ Cancel", callback_data: "cancel_broadcast" },
+          ],
+        ],
+      },
+    },
+  );
+});
+
+// Handle broadcast confirmation
+bot.on("callback_query", async (callbackQuery) => {
+  const chatId = callbackQuery.message.chat.id;
+  const data = callbackQuery.data;
+
+  if (data.startsWith("confirm_broadcast:")) {
+    if (!isAdmin(chatId)) {
+      return bot.answerCallbackQuery(callbackQuery.id, {
+        text: "❌ You don't have permission to broadcast.",
+      });
+    }
+
+    const encodedMessage = data.replace("confirm_broadcast:", "");
+    const broadcastMessage = Buffer.from(encodedMessage, "base64").toString();
+
+    let successCount = 0;
+    let failCount = 0;
+
+    // Send to all users
+    for (const user of users) {
+      try {
+        await bot.sendMessage(
+          user.id,
+          `📢 *Important Announcement:*\n\n${broadcastMessage}`,
+          {
+            parse_mode: "Markdown",
+          },
+        );
+        successCount++;
+
+        // Add small delay to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`Failed to send broadcast to ${user.id}:`, error.message);
+        failCount++;
+      }
+    }
+
+    // Save broadcast to database
+    try {
+      channelPostOperations.create.run(chatId, broadcastMessage);
+    } catch (error) {
+      console.error("Error saving broadcast to database:", error.message);
+    }
+
+    await bot.answerCallbackQuery(callbackQuery.id, {
+      text: `✅ Broadcast sent! Success: ${successCount}, Failed: ${failCount}`,
+    });
+    await bot.sendMessage(
+      chatId,
+      `📢 Broadcast completed!\n✅ Sent to: ${successCount} users\n❌ Failed: ${failCount} users`,
+      {
+        parse_mode: "Markdown",
+      },
+    );
+  } else if (data === "cancel_broadcast") {
+    await bot.answerCallbackQuery(callbackQuery.id, {
+      text: "❌ Broadcast cancelled.",
+    });
+    await bot.sendMessage(chatId, "❌ Broadcast cancelled.", {
+      parse_mode: "Markdown",
+    });
+  }
+
+  // Prayer settings callbacks
+  if (data === "prayer_settings") {
+    return sendPrayerSettings(chatId);
+  }
+
+  if (data.startsWith("toggle_prayer_")) {
+    const prayerType = data.replace("toggle_prayer_", "");
+    return togglePrayerNotification(chatId, prayerType, callbackQuery);
+  }
+
+  if (data === "toggle_all_prayers") {
+    return toggleAllPrayerNotifications(chatId, callbackQuery);
+  }
+
+  // Menu callback
+  if (data === "menu") {
+    return sendMainMenu(chatId);
+  }
+
+  // Feedback callback
+  if (data === "feedback") {
+    return sendFeedbackPrompt(chatId);
+  }
+
+  // Prayer times callback
+  if (data === "prayer_times") {
+    const user = users.find((u) => u.id === chatId);
+    if (!user) {
+      return bot.sendMessage(
+        chatId,
+        "Please use /start first to set up your timezone.",
+        {
+          parse_mode: "Markdown",
+        },
+      );
+    }
+
+    try {
+      const today = moment().tz(user.timezone).startOf("day");
+      const prayerTimes = await getPrayerTimesForUser(user, today);
+      const message = formatPrayerTimeMessage(prayerTimes, user.language);
+
+      await bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
+    } catch (error) {
+      console.error("Error getting prayer times:", error.message);
+      await bot.sendMessage(
+        chatId,
+        "Sorry, unable to fetch prayer times at the moment. Please try again later.",
+        {
+          parse_mode: "Markdown",
+        },
+      );
+    }
+    return;
+  }
+});
+
+// Menu command - show inline buttons for all main actions
+bot.onText(/\/menu/, async (msg) => {
+  const chatId = msg.chat.id;
+  return sendMainMenu(chatId);
+});
+
+// Helper to send main menu
+async function sendMainMenu(chatId) {
+  const user = users.find((u) => u.id === chatId);
+
+  await bot.sendMessage(chatId, "🌿 Main Menu — choose an action:", {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "📿 Subscribe", callback_data: "subscribe_user" },
+          { text: "📍 Share Location", callback_data: "share_location" },
+        ],
+        [
+          { text: "🕓 My Time", callback_data: "mytime" },
+          { text: "🧪 Test Azkar", callback_data: "test" },
+        ],
+        [
+          { text: "🕌 Prayer Times", callback_data: "prayer_times" },
+          { text: "🔔 Prayer Settings", callback_data: "prayer_settings" },
+        ],
+        [
+          { text: "💬 Feedback", callback_data: "feedback" },
+          { text: "📊 Stats", callback_data: "stats" },
+        ],
+        [
+          { text: "🛑 Unsubscribe", callback_data: "stop" },
+          { text: "❓ Help", callback_data: "help" },
+        ],
+        [{ text: "📖 Read Surah", callback_data: "read_surah" }],
+        [{ text: "📅 Date in Hijri", callback_data: "date_hijri" }],
+        [
+          { text: "🕋 Arabic", callback_data: "lang_arabic" },
+          { text: "🇬🇧 English", callback_data: "lang_english" },
+          { text: "🇪🇹 Amharic", callback_data: "lang_amharic" },
+        ],
+        [{ text: "🕌 Ramadan Countdown", callback_data: "ramadan" }],
+      ],
+    },
+  });
+}
+
+// Helper to send feedback prompt
+async function sendFeedbackPrompt(chatId) {
+  const user = users.find((u) => u.id === chatId);
+
+  if (!user) {
+    return bot.sendMessage(chatId, "Please use /start first to subscribe.", {
+      parse_mode: "Markdown",
+    });
+  }
+
+  // Set feedback prompt flag
+  user.lastFeedbackPrompt = moment().toISOString();
+
+  let promptMessage = "";
+  if (user.language === "Arabic") {
+    promptMessage =
+      "💬 يرجى إرسال تعليقك أو اقتراحك لتحسين البوت:\n\nيمكنك أيضاً استخدام: `/feedback [رسالتك]`";
+  } else if (user.language === "English") {
+    promptMessage =
+      "💬 Please send your feedback or suggestion to improve the bot:\n\nYou can also use: `/feedback [your message]`";
+  } else if (user.language === "Amharic") {
+    promptMessage =
+      "💬 ቦቱን ለማሳደግ አስተያየት ወይም ግጥም ያስተላልፉ:\n\nተጠቀሙ የምትችሉት: `/feedback [መልክዎ]`";
+  }
+
+  await bot.sendMessage(chatId, promptMessage, { parse_mode: "Markdown" });
+}
+bot.onText(/\/prayersettings|\/prayerprefs/, async (msg) => {
+  const chatId = msg.chat.id;
+  return sendPrayerSettings(chatId);
+});
+
+// Helper to send prayer settings menu
+async function sendPrayerSettings(chatId) {
+  const user = users.find((u) => u.id === chatId);
+
+  if (!user) {
+    return bot.sendMessage(chatId, "Please use /start first to subscribe.", {
+      parse_mode: "Markdown",
+    });
+  }
+
+  const statusText = user.prayerNotifications ? "✅ Enabled" : "❌ Disabled";
+
+  let settingsMessage = `🕌 *Prayer Notification Settings*\n\n`;
+  settingsMessage += `Overall Notifications: *${statusText}*\n\n`;
+  settingsMessage += `Individual Prayer Notifications:\n`;
+  settingsMessage += `🕋 Fajr: ${user.fajrNotification ? "✅" : "❌"} ${user.fajrNotification ? "(Enabled)" : "(Disabled)"}\n`;
+  settingsMessage += `🕋 Dhuhr: ${user.dhuhrNotification ? "✅" : "❌"} ${user.dhuhrNotification ? "(Enabled)" : "(Disabled)"}\n`;
+  settingsMessage += `🕋 Asr: ${user.asrNotification ? "✅" : "❌"} ${user.asrNotification ? "(Enabled)" : "(Disabled)"}\n`;
+  settingsMessage += `🕋 Maghrib: ${user.maghribNotification ? "✅" : "❌"} ${user.maghribNotification ? "(Enabled)" : "(Disabled)"}\n`;
+  settingsMessage += `🕋 Isha: ${user.ishaNotification ? "✅" : "❌"} ${user.ishaNotification ? "(Enabled)" : "(Disabled)"}\n\n`;
+  settingsMessage += `Choose an action:`;
+
+  const keyboard = [
+    [
+      {
+        text: user.prayerNotifications
+          ? "🔕 Disable All Prayers"
+          : "🔔 Enable All Prayers",
+        callback_data: "toggle_all_prayers",
+      },
+    ],
+    [
+      {
+        text: `${user.fajrNotification ? "🔕" : "🔔"} Fajr`,
+        callback_data: "toggle_prayer_fajr",
+      },
+      {
+        text: `${user.dhuhrNotification ? "🔕" : "🔔"} Dhuhr`,
+        callback_data: "toggle_prayer_dhuhr",
+      },
+    ],
+    [
+      {
+        text: `${user.asrNotification ? "🔕" : "🔔"} Asr`,
+        callback_data: "toggle_prayer_asr",
+      },
+      {
+        text: `${user.maghribNotification ? "🔕" : "🔔"} Maghrib`,
+        callback_data: "toggle_prayer_maghrib",
+      },
+    ],
+    [
+      {
+        text: `${user.ishaNotification ? "🔕" : "🔔"} Isha`,
+        callback_data: "toggle_prayer_isha",
+      },
+    ],
+    [{ text: "⬅️ Back to Menu", callback_data: "menu" }],
+  ];
+
+  await bot.sendMessage(chatId, settingsMessage, {
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: keyboard,
+    },
+  });
+}
+
+// Helper to toggle individual prayer notifications
+async function togglePrayerNotification(
+  chatId,
+  prayerType,
+  callbackQuery = null,
+) {
+  const user = users.find((u) => u.id === chatId);
+
+  if (!user) return;
+
+  const prayerFields = {
+    fajr: "fajrNotification",
+    dhuhr: "dhuhrNotification",
+    asr: "asrNotification",
+    maghrib: "maghribNotification",
+    isha: "ishaNotification",
+  };
+
+  const field = prayerFields[prayerType];
+  if (!field) return;
+
+  user[field] = !user[field];
+  saveUserToDB(user);
+
+  // Send updated settings
+  await sendPrayerSettings(chatId);
+
+  // Acknowledge the callback
+  if (callbackQuery) {
+    try {
+      await bot.answerCallbackQuery(callbackQuery.id, {
+        text: `${user[field] ? "🔔" : "🔕"} ${prayerType.charAt(0).toUpperCase() + prayerType.slice(1)} notifications ${user[field] ? "enabled" : "disabled"}`,
+      });
+    } catch (e) {}
+  }
+}
+
+// Helper to toggle all prayer notifications
+async function toggleAllPrayerNotifications(chatId, callbackQuery = null) {
+  const user = users.find((u) => u.id === chatId);
+
+  if (!user) return;
+
+  const newState = !user.prayerNotifications;
+  user.prayerNotifications = newState;
+  user.fajrNotification = newState;
+  user.dhuhrNotification = newState;
+  user.asrNotification = newState;
+  user.maghribNotification = newState;
+  user.ishaNotification = newState;
+
+  saveUserToDB(user);
+
+  // Send updated settings
+  await sendPrayerSettings(chatId);
+
+  // Acknowledge the callback
+  if (callbackQuery) {
+    try {
+      await bot.answerCallbackQuery(callbackQuery.id, {
+        text: `${newState ? "🔔 All prayer notifications enabled" : "🔕 All prayer notifications disabled"}`,
+      });
+    } catch (e) {}
+  }
+}
+
 // Menu command - show inline buttons for all main actions
 bot.onText(/\/menu/, async (msg) => {
   const chatId = msg.chat.id;
@@ -557,6 +1202,10 @@ bot.onText(/\/menu/, async (msg) => {
         [
           { text: "📊 Stats", callback_data: "stats" },
           { text: "🛑 Unsubscribe", callback_data: "stop" },
+        ],
+        [
+          { text: "💬 Feedback", callback_data: "send_feedback" },
+          { text: "🕌 Prayer Settings", callback_data: "prayer_settings" },
         ],
         [{ text: "❓ Help", callback_data: "help" }],
         [{ text: "📖 Read Surah", callback_data: "read_surah" }],
@@ -588,14 +1237,26 @@ async function sendUserTime(chatId) {
   // Hijri date (uses moment-hijri when available, otherwise AlAdhan API fallback)
   const hijri = await getHijriString(userTime);
 
+  // Get today's prayer times
+  let prayerTimesText = "";
+  try {
+    const today = userTime.clone().startOf("day");
+    const prayerTimes = await getPrayerTimesForUser(user, today);
+    prayerTimesText = `\n🕌 *Today's Prayer Times:*\n• Fajr: ${prayerTimes.fajr}\n• Dhuhr: ${prayerTimes.dhuhr}\n• Asr: ${prayerTimes.asr}\n• Maghrib: ${prayerTimes.maghrib}\n• Isha: ${prayerTimes.isha}`;
+  } catch (error) {
+    console.error("Error getting prayer times for /mytime:", error.message);
+    prayerTimesText = "\n🕌 *Prayer Times:* Unable to load at the moment";
+  }
+
   const timeInfo = `
 🕐 *Your Current Settings:*
 • Your Timezone: *${user.timezone}*
 • Current Time: *${userTime.format("YYYY-MM-DD HH:mm:ss")}*
 • Hijri Date: *${hijri}*
 • Language: *${user.language}*
+• Prayer Notifications: *${user.prayerNotifications ? "Enabled" : "Disabled"}*
 • Next Morning Azkar: *7:00 AM*
-• Next Evening Azkar: *5:00 PM*
+• Next Evening Azkar: *5:00 PM*${prayerTimesText}
 
 *Schedule Times in Your Timezone:*
 ⏰ 6:55 AM - Morning reminder
@@ -634,52 +1295,74 @@ async function getHijriString(momentObj) {
 }
 
 // Get prayer times for a user based on their timezone/location
-// We'll approximate location from timezone since we don't store exact coordinates
+// Uses AlAdhan API with coordinates when available, otherwise approximates
 async function getPrayerTimesForUser(user, dateObj) {
   try {
-    // Since we don't store exact coordinates, we'll use a simple approach:
-    // Use the timezone to get a rough location (this is not perfect but works for demo)
-    // In a production app, you'd want to store user coordinates when they share location
-    
-    // For now, we'll return mock prayer times based on common patterns
-    // In a real implementation, you'd call AlAdhan API with coordinates
     const dateStr = dateObj.format("YYYY-MM-DD");
-    
+
     // Check if we have cached prayer times for this user/date
-    const cached = prayerTimeOperations.getByChatIdAndDate.get(user.id, dateStr);
+    const cached = prayerTimeOperations.getByChatIdAndDate.get(
+      user.id,
+      dateStr,
+    );
     if (cached) {
       return {
         fajr: cached.fajr,
         dhuhr: cached.dhuhr,
         asr: cached.asr,
         maghrib: cached.maghrib,
-        isha: cached.isha
+        isha: cached.isha,
       };
     }
-    
-    // Since we don't have exact coordinates, we'll use approximate times
-    // This is a simplification - in reality you'd need user's latitude/longitude
-    // For demonstration, we'll use fixed offsets from solar noon
-    
-    // Get approximate solar noon for the timezone (simplified)
-    const noonMoment = dateObj.clone().tz(user.timezone).set({ hour: 12, minute: 0, second: 0, millisecond: 0 });
-    
-    // Approximate prayer times (these should really come from AlAdhan API with coordinates)
-    const fajrMoment = noonMoment.clone().subtract(4, 'hours');  // Approximate
-    const dhuhrMoment = noonMoment.clone();                      // Solar noon
-    const asrMoment = noonMoment.clone().add(3, 'hours');        // Approximate
-    const maghribMoment = noonMoment.clone().add(6, 'hours');    // Approximate sunset
-    const ishaMoment = noonMoment.clone().add(8, 'hours');       // Approximate
-    
-    const prayerTimes = {
-      fajr: fajrMoment.format("HH:mm"),
-      dhuhr: dhuhrMoment.format("HH:mm"),
-      asr: asrMoment.format("HH:mm"),
-      maghrib: maghribMoment.format("HH:mm"),
-      isha: ishaMoment.format("HH:mm")
-    };
-    
-    // Cache the prayer times
+
+    // Try to get coordinates from user's location sharing
+    // For now, we'll use timezone-based approximation, but in production
+    // you'd want to store user coordinates when they share location
+
+    // Get approximate coordinates based on timezone (simplified approach)
+    const approxCoords = getApproximateCoordinatesFromTimezone(user.timezone);
+
+    if (approxCoords) {
+      try {
+        // Use AlAdhan API with coordinates
+        const apiUrl = `https://api.aladhan.com/v1/timings/${dateStr}?latitude=${approxCoords.lat}&longitude=${approxCoords.lon}&method=2&school=0`;
+        const response = await axios.get(apiUrl);
+
+        if (response.data && response.data.data && response.data.data.timings) {
+          const timings = response.data.data.timings;
+          const prayerTimes = {
+            fajr: timings.Fajr,
+            dhuhr: timings.Dhuhr,
+            asr: timings.Asr,
+            maghrib: timings.Maghrib,
+            isha: timings.Isha,
+          };
+
+          // Cache the prayer times
+          prayerTimeOperations.upsert.run(
+            user.id,
+            dateStr,
+            prayerTimes.fajr,
+            prayerTimes.dhuhr,
+            prayerTimes.asr,
+            prayerTimes.maghrib,
+            prayerTimes.isha,
+          );
+
+          return prayerTimes;
+        }
+      } catch (apiError) {
+        console.warn(
+          "AlAdhan API failed, falling back to approximation:",
+          apiError.message,
+        );
+      }
+    }
+
+    // Fallback: approximate prayer times based on solar calculations
+    const prayerTimes = calculateApproximatePrayerTimes(dateObj, user.timezone);
+
+    // Cache the fallback prayer times
     prayerTimeOperations.upsert.run(
       user.id,
       dateStr,
@@ -687,9 +1370,9 @@ async function getPrayerTimesForUser(user, dateObj) {
       prayerTimes.dhuhr,
       prayerTimes.asr,
       prayerTimes.maghrib,
-      prayerTimes.isha
+      prayerTimes.isha,
     );
-    
+
     return prayerTimes;
   } catch (error) {
     console.error("Error getting prayer times for user:", error.message);
@@ -699,15 +1382,58 @@ async function getPrayerTimesForUser(user, dateObj) {
       dhuhr: "12:00",
       asr: "15:30",
       maghrib: "18:00",
-      isha: "19:30"
+      isha: "19:30",
     };
   }
+}
+
+// Get approximate coordinates for a timezone (simplified mapping)
+function getApproximateCoordinatesFromTimezone(timezone) {
+  // This is a simplified mapping - in production, you'd use a proper timezone to coordinates service
+  const timezoneCoords = {
+    "Africa/Addis_Ababa": { lat: 9.145, lon: 38.7379 },
+    "Africa/Nairobi": { lat: -1.2921, lon: 36.8219 },
+    "Africa/Cairo": { lat: 30.0444, lon: 31.2357 },
+    "Asia/Riyadh": { lat: 24.7136, lon: 46.6753 },
+    "Asia/Dubai": { lat: 25.2048, lon: 55.2708 },
+    "Europe/London": { lat: 51.5074, lon: -0.1278 },
+    "America/New_York": { lat: 40.7128, lon: -74.006 },
+    "Asia/Kolkata": { lat: 28.6139, lon: 77.209 },
+    "Australia/Sydney": { lat: -33.8688, lon: 151.2093 },
+  };
+
+  return timezoneCoords[timezone] || null;
+}
+
+// Calculate approximate prayer times using simplified astronomical calculations
+function calculateApproximatePrayerTimes(dateObj, timezone) {
+  // Get solar noon for the timezone
+  const noonMoment = dateObj
+    .clone()
+    .tz(timezone)
+    .set({ hour: 12, minute: 0, second: 0, millisecond: 0 });
+
+  // Simplified prayer time calculations (not astronomically accurate)
+  // In production, use a proper Islamic prayer times library
+  const fajrMoment = noonMoment.clone().subtract(7, "hours").add(30, "minutes"); // Fajr ~1.5 hours before sunrise
+  const dhuhrMoment = noonMoment.clone(); // Solar noon
+  const asrMoment = noonMoment.clone().add(3, "hours"); // Asr ~3 hours after noon
+  const maghribMoment = noonMoment.clone().add(6, "hours"); // Maghrib ~6 hours after noon (sunset)
+  const ishaMoment = noonMoment.clone().add(8, "hours"); // Isha ~2 hours after maghrib
+
+  return {
+    fajr: fajrMoment.format("HH:mm"),
+    dhuhr: dhuhrMoment.format("HH:mm"),
+    asr: asrMoment.format("HH:mm"),
+    maghrib: maghribMoment.format("HH:mm"),
+    isha: ishaMoment.format("HH:mm"),
+  };
 }
 
 // Format prayer time message for sending to user
 function formatPrayerTimeMessage(prayerTimes, lang) {
   let msg = `🕌 *Prayer Times for Today* 🕌\n\n`;
-  
+
   if (lang === "Arabic") {
     msg += `🕋 الفجر: *${prayerTimes.fajr}*\n`;
     msg += `🕋 الظهر: *${prayerTimes.dhuhr}*\n`;
@@ -730,7 +1456,7 @@ function formatPrayerTimeMessage(prayerTimes, lang) {
     msg += `🕋 ሌሊት: *${prayerTimes.isha}*\n\n`;
     msg += "አትቀርብ የጠዋት ሰዓት።\n";
   }
-  
+
   return msg;
 }
 
@@ -822,6 +1548,89 @@ schedule.scheduleJob("* * * * *", async () => {
           console.error(
             `Error sending Surah al-Kahf to ${user.id}:`,
             err && err.message,
+          );
+        }
+      }
+
+      // Check for prayer times notifications
+      if (user.prayerNotifications) {
+        try {
+          const today = userTime.clone().startOf("day");
+          const prayerTimes = await getPrayerTimesForUser(user, today);
+
+          // Check each prayer time
+          const prayerTimeChecks = [
+            {
+              name: "fajr",
+              time: prayerTimes.fajr,
+              enabled: user.fajrNotification,
+              arabic: "الفجر",
+              english: "Fajr",
+              amharic: "የጠዋት",
+            },
+            {
+              name: "dhuhr",
+              time: prayerTimes.dhuhr,
+              enabled: user.dhuhrNotification,
+              arabic: "الظهر",
+              english: "Dhuhr",
+              amharic: "ሰዓት",
+            },
+            {
+              name: "asr",
+              time: prayerTimes.asr,
+              enabled: user.asrNotification,
+              arabic: "العصر",
+              english: "Asr",
+              amharic: "የአረቀተሰዓት",
+            },
+            {
+              name: "maghrib",
+              time: prayerTimes.maghrib,
+              enabled: user.maghribNotification,
+              arabic: "المغرب",
+              english: "Maghrib",
+              amharic: "የጠዋት ጊዜ",
+            },
+            {
+              name: "isha",
+              time: prayerTimes.isha,
+              enabled: user.ishaNotification,
+              arabic: "العشاء",
+              english: "Isha",
+              amharic: "ሌሊት",
+            },
+          ];
+
+          for (const prayer of prayerTimeChecks) {
+            if (prayer.enabled) {
+              const [prayerHour, prayerMinute] = prayer.time
+                .split(":")
+                .map(Number);
+              if (hour === prayerHour && minute === prayerMinute) {
+                console.log(
+                  `🕌 SENDING ${prayer.name.toUpperCase()} PRAYER NOTIFICATION to ${user.id}`,
+                );
+
+                let prayerMessage = "";
+                if (lang === "Arabic") {
+                  prayerMessage = `🕌 حان وقت صلاة *${prayer.arabic}*\n\nأدِ الصلاةَ لِوقتِها، إنَّ الصلاةَ كانتْ على المؤمنينَ كتابًا موقوتًا\n\n🕐 ${prayer.time}`;
+                } else if (lang === "English") {
+                  prayerMessage = `🕌 It's time for *${prayer.english}* prayer\n\n"Verily, the prayer is enjoined on the believers at fixed hours." (Quran 4:103)\n\n🕐 ${prayer.time}`;
+                } else if (lang === "Amharic") {
+                  prayerMessage = `🕌 የ*${prayer.amharic}* ጸሎት ሰዓት ደረሰ\n\nበእምነት ላለ ሰዎች ጸሎት በተወሰነ ሰዓት ተያዘ።\n\n🕐 ${prayer.time}`;
+                }
+
+                await bot.sendMessage(user.id, prayerMessage, {
+                  parse_mode: "Markdown",
+                });
+              }
+            }
+          }
+        } catch (prayerError) {
+          console.error(
+            `Error checking prayer times for user ${user.id}:`,
+            prayerError.message,
           );
         }
       }
@@ -918,17 +1727,17 @@ bot.on("location", async (msg) => {
       user.timezone = tz;
       user.tzSource = "location";
       user.lastActive = moment().toISOString();
-     } else {
-       const newUser = {
-         id: chatId,
-         timezone: tz,
-         language: "Arabic",
-         tzSource: "location",
-         lastActive: moment().toISOString(),
-       };
-       users.push(newUser);
-       saveUserToDB(newUser);
-     }
+    } else {
+      const newUser = {
+        id: chatId,
+        timezone: tz,
+        language: "Arabic",
+        tzSource: "location",
+        lastActive: moment().toISOString(),
+      };
+      users.push(newUser);
+      saveUserToDB(newUser);
+    }
     // Confirm and show quick action menu
     await bot.sendMessage(chatId, `✅ Timezone set to *${tz}*. Thank you!`, {
       parse_mode: "Markdown",
