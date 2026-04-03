@@ -94,8 +94,9 @@ BASE_URL=https://your-domain.com
 # Optional: Port for the web server (default: 10000)
 PORT=10000
 
-# Optional: Admin chat IDs for broadcasting (comma-separated)
-ADMIN_CHAT_IDS=123456789,987654321
+# Optional: Initial admin chat IDs for bootstrapping (comma-separated)
+# After first admin is added via /addadmin, this can be removed
+ADMIN_CHAT_IDS=your_initial_admin_chat_id
 ```
 
 **Security Note**: Never commit `.env` to version control!
@@ -115,6 +116,7 @@ The database initializes automatically on first run. No manual setup required.
   - `prayer_times` - Cached prayer times
   - `feedback` - User suggestions
   - `channel_posts` - Broadcast history
+  - `admins` - Admin user management
 
 ### Step 4: Configure Deployment Mode
 

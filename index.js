@@ -48,6 +48,7 @@ const {
   prayerTimeOperations,
   feedbackOperations,
   channelPostOperations,
+  adminOperations,
 } = require("./database/init");
 
 // Load users from database
@@ -751,14 +752,88 @@ bot.on("message", async (msg) => {
 });
 
 // 📢 Admin Broadcasting Commands
-const ADMIN_CHAT_IDS = process.env.ADMIN_CHAT_IDS
-  ? process.env.ADMIN_CHAT_IDS.split(",").map((id) => id.trim())
-  : [];
-
-// Check if user is admin
+// Check if user is admin (using database, fallback to env var)
 function isAdmin(chatId) {
-  return ADMIN_CHAT_IDS.includes(chatId.toString());
+  try {
+    const result = adminOperations.isAdmin.get(chatId);
+    if (result) return true;
+
+    // Fallback to environment variable for initial setup
+    const ADMIN_CHAT_IDS = process.env.ADMIN_CHAT_IDS
+      ? process.env.ADMIN_CHAT_IDS.split(",").map((id) => id.trim())
+      : [];
+    return ADMIN_CHAT_IDS.includes(chatId.toString());
+  } catch (error) {
+    console.error("Error checking admin status:", error.message);
+    return false;
+  }
 }
+
+// Admin: Add new admin
+bot.onText(/\/addadmin (\d+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const targetChatId = match[1];
+
+  if (!isAdmin(chatId)) {
+    bot.sendMessage(chatId, "❌ You don't have permission to manage admins.");
+    return;
+  }
+
+  try {
+    adminOperations.add.run(targetChatId, chatId);
+    bot.sendMessage(chatId, `✅ Added ${targetChatId} as admin.`);
+  } catch (error) {
+    console.error("Error adding admin:", error.message);
+    bot.sendMessage(chatId, "❌ Failed to add admin. They might already be an admin.");
+  }
+});
+
+// Admin: Remove admin
+bot.onText(/\/removeadmin (\d+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const targetChatId = match[1];
+
+  if (!isAdmin(chatId)) {
+    bot.sendMessage(chatId, "❌ You don't have permission to manage admins.");
+    return;
+  }
+
+  try {
+    adminOperations.remove.run(targetChatId);
+    bot.sendMessage(chatId, `✅ Removed ${targetChatId} from admins.`);
+  } catch (error) {
+    console.error("Error removing admin:", error.message);
+    bot.sendMessage(chatId, "❌ Failed to remove admin.");
+  }
+});
+
+// Admin: List all admins
+bot.onText(/\/listadmins/, (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAdmin(chatId)) {
+    bot.sendMessage(chatId, "❌ You don't have permission to view admins.");
+    return;
+  }
+
+  try {
+    const admins = adminOperations.getAll.all();
+    if (admins.length === 0) {
+      bot.sendMessage(chatId, "📋 No admins found.");
+      return;
+    }
+
+    let message = "📋 Current Admins:\n\n";
+    admins.forEach((admin, index) => {
+      message += `${index + 1}. ${admin.chat_id} (Added: ${new Date(admin.added_at).toLocaleDateString()})\n`;
+    });
+
+    bot.sendMessage(chatId, message);
+  } catch (error) {
+    console.error("Error listing admins:", error.message);
+    bot.sendMessage(chatId, "❌ Failed to retrieve admin list.");
+  }
+});
 
 // Admin: View recent feedback
 bot.onText(/\/viewfeedback/, async (msg) => {

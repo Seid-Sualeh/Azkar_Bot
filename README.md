@@ -97,6 +97,9 @@ The database will be automatically initialized on first run.
 | `/stats` | View usage statistics |
 | `/stop` | Unsubscribe from reminders |
 | `/broadcast` | **Admin only**: Send announcements to all users |
+| `/addadmin <chat_id>` | **Admin only**: Add a new admin |
+| `/removeadmin <chat_id>` | **Admin only**: Remove an admin |
+| `/listadmins` | **Admin only**: List all current admins |
 
 ### Interactive Menu
 Use `/menu` to access all features through an intuitive inline keyboard interface.
@@ -219,4 +222,3 @@ For support, feedback, or feature requests:
 ---
 
 **May Allah accept our efforts and make this beneficial for the Ummah. 🤲**</content>
-<parameter name="filePath">c:\Users\pc\Desktop\Safaricom Talent\Azkar_Bot\README.md

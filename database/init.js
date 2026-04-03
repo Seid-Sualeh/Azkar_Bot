@@ -53,6 +53,18 @@ function initializeDatabase() {
     )
   `);
 
+  // Admins table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS admins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id INTEGER UNIQUE NOT NULL,
+      added_by INTEGER,
+      added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (chat_id) REFERENCES users(chat_id),
+      FOREIGN KEY (added_by) REFERENCES users(chat_id)
+    )
+  `);
+
   // Channel posts table
   db.exec(`
     CREATE TABLE IF NOT EXISTS channel_posts (
@@ -177,6 +189,29 @@ const channelPostOperations = {
   `),
 };
 
+// Admin operations
+const adminOperations = {
+  // Check if chat_id is admin
+  isAdmin: db.prepare(`
+    SELECT 1 FROM admins WHERE chat_id = ? LIMIT 1
+  `),
+
+  // Add admin
+  add: db.prepare(`
+    INSERT INTO admins (chat_id, added_by) VALUES (?, ?)
+  `),
+
+  // Remove admin
+  remove: db.prepare(`
+    DELETE FROM admins WHERE chat_id = ?
+  `),
+
+  // Get all admins
+  getAll: db.prepare(`
+    SELECT * FROM admins ORDER BY added_at DESC
+  `),
+};
+
 module.exports = {
   db,
   initializeDatabase,
@@ -184,4 +219,5 @@ module.exports = {
   prayerTimeOperations,
   feedbackOperations,
   channelPostOperations,
+  adminOperations,
 };
