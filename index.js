@@ -1328,6 +1328,28 @@ bot.onText(/\/broadcast/, async (msg) => {
     );
   }
 
+  // Check length and warn if too long
+  if (broadcastText.length > 4000) {
+    return bot.sendMessage(
+      chatId,
+      `⚠️ Your message is ${broadcastText.length} characters long (max 4000). It will be automatically split into multiple parts.\n\nDo you want to proceed?`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "✅ Proceed",
+                callback_data: `confirm_broadcast:${Buffer.from(broadcastText).toString("base64")}`,
+              },
+            ],
+            [{ text: "❌ Cancel", callback_data: "cancel_broadcast" }],
+          ],
+        },
+      },
+    );
+  }
+
   // Confirm broadcast
   await bot.sendMessage(
     chatId,
@@ -1364,26 +1386,77 @@ bot.on("callback_query", async (callbackQuery) => {
     const encodedMessage = data.replace("confirm_broadcast:", "");
     const broadcastMessage = Buffer.from(encodedMessage, "base64").toString();
 
+    // Check message length and split if necessary
+    const MAX_MESSAGE_LENGTH = 4000;
+    let messagesToSend = [];
+
+    if (broadcastMessage.length > MAX_MESSAGE_LENGTH) {
+      // Split message into chunks at word boundaries
+      const words = broadcastMessage.split(' ');
+      let currentMessage = '';
+
+      for (const word of words) {
+        if ((currentMessage + ' ' + word).length > MAX_MESSAGE_LENGTH) {
+          if (currentMessage.trim()) {
+            messagesToSend.push(currentMessage.trim());
+          }
+          currentMessage = word;
+        } else {
+          currentMessage += (currentMessage ? ' ' : '') + word;
+        }
+      }
+
+      if (currentMessage.trim()) {
+        messagesToSend.push(currentMessage.trim());
+      }
+    } else {
+      messagesToSend = [broadcastMessage];
+    }
+
     let successCount = 0;
     let failCount = 0;
+    const failedUsers = [];
 
-    // Send to all users
+    // Send to all users with better error handling
     for (const user of users) {
       try {
-        await bot.sendMessage(
-          user.id,
-          `📢 *Important Announcement:*\n\n${broadcastMessage}`,
-          {
+        // Send all message parts to this user
+        for (let i = 0; i < messagesToSend.length; i++) {
+          const messagePart = messagesToSend[i];
+          const isFirstPart = i === 0;
+          const isLastPart = i === messagesToSend.length - 1;
+
+          let fullMessage;
+          if (messagesToSend.length === 1) {
+            // Single message
+            fullMessage = `📢 *Important Announcement:*\n\n${messagePart}`;
+          } else if (isFirstPart) {
+            // First part of multi-part message
+            fullMessage = `📢 *Important Announcement (Part ${i + 1}/${messagesToSend.length}):*\n\n${messagePart}`;
+          } else {
+            // Subsequent parts
+            fullMessage = `📢 *Announcement (Part ${i + 1}/${messagesToSend.length}):*\n\n${messagePart}`;
+          }
+
+          await bot.sendMessage(user.id, fullMessage, {
             parse_mode: "Markdown",
-          },
-        );
+            disable_web_page_preview: true,
+          });
+
+          // Small delay between parts
+          if (!isLastPart) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+        }
+
         successCount++;
 
-        // Add small delay to avoid rate limiting
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Add delay between users to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 200));
       } catch (error) {
         console.error(`Failed to send broadcast to ${user.id}:`, error.message);
         failCount++;
+        failedUsers.push(user.id);
       }
     }
 
@@ -1394,16 +1467,26 @@ bot.on("callback_query", async (callbackQuery) => {
       console.error("Error saving broadcast to database:", error.message);
     }
 
+    // Send summary to admin
+    let summaryMessage = `📢 Broadcast completed!\n✅ Sent to: ${successCount} users\n❌ Failed: ${failCount} users`;
+
+    if (messagesToSend.length > 1) {
+      summaryMessage += `\n📝 Message split into ${messagesToSend.length} parts due to length.`;
+    }
+
+    if (failCount > 0 && failCount <= 5) {
+      summaryMessage += `\n\nFailed user IDs: ${failedUsers.join(", ")}`;
+    } else if (failCount > 5) {
+      summaryMessage += `\n\nToo many failures to list individually.`;
+    }
+
     await bot.answerCallbackQuery(callbackQuery.id, {
-      text: `✅ Broadcast sent! Success: ${successCount}, Failed: ${failCount}`,
+      text: `✅ Broadcast sent! Success: ${successCount}, Failed: ${failCount}${messagesToSend.length > 1 ? ` (${messagesToSend.length} parts)` : ''}`,
     });
-    await bot.sendMessage(
-      chatId,
-      `📢 Broadcast completed!\n✅ Sent to: ${successCount} users\n❌ Failed: ${failCount} users`,
-      {
-        parse_mode: "Markdown",
-      },
-    );
+
+    await bot.sendMessage(chatId, summaryMessage, {
+      parse_mode: "Markdown",
+    });
   } else if (data === "cancel_broadcast") {
     await bot.answerCallbackQuery(callbackQuery.id, {
       text: "❌ Broadcast cancelled.",
