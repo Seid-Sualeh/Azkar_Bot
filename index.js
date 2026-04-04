@@ -32,7 +32,8 @@ const BASE_URL = process.env.BASE_URL;
 const PORT = process.env.PORT || 10000;
 
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
-bot.setWebHook(`${BASE_URL}/bot${TELEGRAM_BOT_TOKEN}`);
+bot.setWebHook(`${BASE_URL}/bot${TELEGRAM_BOT_TOKEN}`); // Use webhook for production
+// bot.startPolling(); // Commented out for production
 
 // 🎧 Telegram File IDs for reliable playback
 const EVENING_AZKAR_AUDIO_URL =
@@ -875,7 +876,7 @@ bot.onText(/\/ramadan/, async (msg) => {
   const ramadanCountdown = getDaysUntilRamadan();
   await bot.sendMessage(chatId, ramadanCountdown.message, {
     parse_mode: "Markdown",
-  });
+  });5
 });
 
 // 🕌 Prayer Times Command
