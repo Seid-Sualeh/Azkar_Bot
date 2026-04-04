@@ -61,9 +61,9 @@ function loadUsersFromDB() {
     const rows = userOperations.getAll.all();
     users = rows.map((row) => ({
       id: row.chat_id,
-      timezone: row.timezone,
-      language: row.language,
-      tzSource: row.tz_source,
+      timezone: row.timezone || "Africa/Addis_Ababa",
+      language: row.language || "Arabic",
+      tzSource: row.tz_source || "auto",
       lastActive: row.last_active,
       // Add prayer notification preferences
       prayerNotifications: Boolean(row.prayer_notifications),
@@ -188,6 +188,23 @@ async function getUserTimezone(lat, lon) {
   } catch {
     return "Africa/Addis_Ababa";
   }
+}
+
+function getValidatedTimezone(user) {
+  const defaultTz = "Africa/Addis_Ababa";
+  if (!user) return defaultTz;
+  if (user.timezone && moment.tz.zone(user.timezone)) {
+    return user.timezone;
+  }
+
+  const fallbackTz = defaultTz;
+  console.warn(
+    `Invalid or missing timezone for user ${user.id}: ${user.timezone}. Falling back to ${fallbackTz}`,
+  );
+  user.timezone = fallbackTz;
+  user.tzSource = user.tzSource || "auto";
+  saveUserToDB(user);
+  return fallbackTz;
 }
 
 // Update user's last active timestamp (creates user record if missing)
@@ -1003,13 +1020,14 @@ bot.onText(/\/prayer|\/salah|\/prayertimes/, async (msg) => {
   }
 
   try {
-    const today = moment().tz(user.timezone).startOf("day");
+    const timezone = getValidatedTimezone(user);
+    const today = moment().tz(timezone).startOf("day");
     const prayerTimes = await getPrayerTimesForUser(user, today);
     const message = formatPrayerTimeMessage(prayerTimes, user.language);
 
     await bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
   } catch (error) {
-    console.error("Error getting prayer times:", error.message);
+    console.error("Error getting prayer times:", error && error.message);
     await bot.sendMessage(
       chatId,
       "Sorry, unable to fetch prayer times at the moment. Please try again later.",
@@ -1433,13 +1451,14 @@ bot.on("callback_query", async (callbackQuery) => {
     }
 
     try {
-      const today = moment().tz(user.timezone).startOf("day");
+      const timezone = getValidatedTimezone(user);
+      const today = moment().tz(timezone).startOf("day");
       const prayerTimes = await getPrayerTimesForUser(user, today);
       const message = formatPrayerTimeMessage(prayerTimes, user.language);
 
       await bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
     } catch (error) {
-      console.error("Error getting prayer times:", error.message);
+      console.error("Error getting prayer times:", error && error.message);
       await bot.sendMessage(
         chatId,
         "Sorry, unable to fetch prayer times at the moment. Please try again later.",
@@ -1682,7 +1701,8 @@ async function sendUserTime(chatId) {
   }
 
   const nowUTC = moment.utc();
-  const userTime = nowUTC.clone().tz(user.timezone);
+  const timezone = getValidatedTimezone(user);
+  const userTime = nowUTC.clone().tz(timezone);
   // Hijri date (uses moment-hijri when available, otherwise AlAdhan API fallback)
   const hijri = await getHijriString(userTime);
 
@@ -1693,7 +1713,7 @@ async function sendUserTime(chatId) {
     const prayerTimes = await getPrayerTimesForUser(user, today);
     prayerTimesText = `\n🕌 *Today's Prayer Times:*\n• Fajr: ${prayerTimes.fajr}\n• Dhuhr: ${prayerTimes.dhuhr}\n• Asr: ${prayerTimes.asr}\n• Maghrib: ${prayerTimes.maghrib}\n• Isha: ${prayerTimes.isha}`;
   } catch (error) {
-    console.error("Error getting prayer times for /mytime:", error.message);
+    console.error("Error getting prayer times for /mytime:", error && error.message);
     prayerTimesText = "\n🕌 *Prayer Times:* Unable to load at the moment";
   }
 
@@ -1725,6 +1745,10 @@ ${getDaysUntilRamadan().message}
 // Get Hijri date string for a given moment instance.
 // Uses moment-hijri if available, otherwise falls back to AlAdhan API.
 async function getHijriString(momentObj) {
+  if (!momentObj) {
+    return "N/A";
+  }
+
   try {
     if (hasMomentHijri) {
       return momentObj.clone().format("iD iMMMM iYYYY");
@@ -1856,6 +1880,11 @@ function getApproximateCoordinatesFromTimezone(timezone) {
 
 // Calculate approximate prayer times using simplified astronomical calculations
 function calculateApproximatePrayerTimes(dateObj, timezone) {
+  // Validate timezone
+  if (!timezone || !moment.tz.zone(timezone)) {
+    timezone = "Africa/Addis_Ababa"; // Fallback
+  }
+
   // Get solar noon for the timezone
   const noonMoment = dateObj
     .clone()
@@ -1926,10 +1955,23 @@ schedule.scheduleJob("* * * * *", async () => {
 
   for (const user of users) {
     try {
-      const userTime = nowUTC.clone().tz(user.timezone);
+      if (!user || !user.id) {
+        console.warn("Skipping invalid user object:", user);
+        continue;
+      }
+      const timezone = getValidatedTimezone(user);
+      if (!timezone) {
+        console.warn(`Skipping user ${user.id}: invalid timezone`);
+        continue;
+      }
+      const userTime = nowUTC.clone().tz(timezone);
+      if (!userTime || typeof userTime.hour !== "function") {
+        console.warn(`Skipping user ${user.id}: invalid userTime object`);
+        continue;
+      }
       const hour = userTime.hour();
       const minute = userTime.minute();
-      const lang = user.language;
+      const lang = user.language || "Arabic";
 
       // Log when we're about to send to specific users
       if ((hour === 7 && minute === 0) || (hour === 17 && minute === 0)) {
@@ -2044,7 +2086,7 @@ schedule.scheduleJob("* * * * *", async () => {
           ];
 
           for (const prayer of prayerTimeChecks) {
-            if (prayer.enabled) {
+            if (prayer.enabled && prayer.time && typeof prayer.time === "string") {
               const [prayerHour, prayerMinute] = prayer.time
                 .split(":")
                 .map(Number);
